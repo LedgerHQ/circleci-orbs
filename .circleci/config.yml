@@ -1,0 +1,129 @@
+version: 2.1
+
+orbs:
+  cli: circleci/circleci-cli@volatile
+
+commands:
+  skip_circleci_update_check:
+    # This check clutters the output when triggered unexpectedly
+    steps:
+      - run:
+          name: Skip CircleCI CLI update check
+          command: |
+            mkdir -p ~/.circleci
+            echo "last_update_check: $(date -Ins | sed 's/,/./')" > ~/.circleci/update_check.yml
+
+jobs:
+  list-updated-orbs:
+    executor: cli/default
+    steps:
+      - checkout
+      - run:
+          name: Create workspace
+          command: |
+            mkdir -p ~/workspace
+      - skip_circleci_update_check
+      - run:
+          name: Compare checksum of the local orbs with the latest version published on the CircleCI registry
+          command: |
+            touch ~/workspace/updated_orbs_name ~/workspace/updated_orbs_path
+            # eval is needed for the CIRCLE_WORKING_DIRECTORY variable as it contains a non-expanded '~'
+            orb_list=$(eval find ${CIRCLE_WORKING_DIRECTORY} -name "orb.yml")
+            for orb_path in $orb_list; do
+              local_orb_checksum=$(md5sum $orb_path | awk '{ print $1 }')
+              orb_name=$(echo $orb_path | awk -F '/' '{ print $(NF-1) }')
+              # If the orb has never been published, set an empty checksum
+              if ! $(circleci orb list ledger | grep -qw ${orb_name}); then
+                published_orb_checksum=
+              else
+                published_orb_checksum=$(circleci orb source ledger/${orb_name}@volatile | md5sum | awk '{ print $1 }')
+              fi
+              if [ "${local_orb_checksum}" != "${published_orb_checksum}" ]; then
+                echo $orb_path >> ~/workspace/updated_orbs_path
+                echo $orb_name >> ~/workspace/updated_orbs_name
+              fi
+            done
+            echo "List of updated orbs :"
+            paste ~/workspace/updated_orbs_name ~/workspace/updated_orbs_path
+      - persist_to_workspace:
+          root: ~/workspace
+          paths:
+            - updated_orbs_path
+            - updated_orbs_name
+  validate:
+    executor: cli/default
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/workspace
+      - run:
+          name: Skip CircleCI CLI update check
+          command: |
+            mkdir -p ~/.circleci
+            echo "last_update_check: $(date -Ins | sed 's/,/./')" > ~/.circleci/update_check.yml
+      - run:
+          name: Validate updated orb files
+          command: |
+            while read orb_name; do
+              circleci orb validate $orb_name
+            done < ~/workspace/updated_orbs_path
+  dev-release:
+    executor: cli/default
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/workspace
+      - skip_circleci_update_check
+      - run:
+          name: Publish orb as a dev release
+          command: |
+            if [ -n "$CIRCLECI_API_TOKEN" ]; then
+              while read orb_path; do
+                orb_name=$(echo $orb_path | awk -F '/' '{ print $(NF-1) }')
+                if ! $(circleci orb list ledger | grep -qw $orb_name); then
+                  echo "Creating new orb on CircleCI registry : ${orb_name}"
+                  if ! circleci --token $CIRCLECI_API_TOKEN orb create ledger/${orb_name} 2>/tmp/circleci_cli.err; then
+                    cat /tmp/circleci_cli.err
+                    if ! grep -q "an Orb with that name already exists" /tmp/circleci_cli.err; then
+                      echo "Failed to create orb : ${orb_name}"
+                      exit 1
+                    fi
+                  fi
+                fi
+                echo "Publishing on CircleCI registry a dev release of orb : ledger/${orbname}@dev:${CIRCLE_BRANCH}-${CIRCLE_SHA1}"
+                circleci --token $CIRCLECI_API_TOKEN orb publish $orb_path ledger/${orbname}@dev:${CIRCLE_BRANCH}-${CIRCLE_SHA1}
+              done < ~/workspace/updated_orbs_path
+            else
+              echo "Missing CircleCI token, skipping this step" >&2
+            fi
+  prod-release:
+    executor: cli/default
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/workspace
+      - skip_circleci_update_check
+      - run:
+          name: Publish orb as a prod release
+          command: |
+            while read orb_name; do
+              echo "Promoting on CircleCI registry a production release of orb : ledger/${orbname}@dev:${CIRCLE_BRANCH}-${CIRCLE_SHA1}"
+              circleci --token $CIRCLECI_API_TOKEN orb publish promote ledger/${orbname}@dev:${CIRCLE_BRANCH}-${CIRCLE_SHA1} patch
+            done < ~/workspace/updated_orbs_name
+
+workflows:
+  main:
+    jobs:
+      - list-updated-orbs
+      - validate:
+          requires:
+            - list-updated-orbs
+      - dev-release:
+          requires:
+            - validate
+      - prod-release:
+          requires:
+            - dev-release
+          filters:
+            branches:
+              only: master
