@@ -1,0 +1,278 @@
+version: 2.1
+
+description: |
+  Build, test and publish Docker images to the Docker Hub registry
+  To use this orb, you have to define the following environment variables
+  on the CircleCI project settings :
+  - DOCKER_USERNAME
+  - DOCKER_PASSWORD
+  - DOCKER_ORGANIZATION if the repository is managed by a Github organization
+
+examples:
+  standard_build_test_and_publish:
+    description: |
+      A standard docker workflow, where you are building an image with a
+      Dockerfile in the root of your repository, naming the image to be the
+      same name as your repository, validating the image setup with the goss tool
+      and then pushing it to the Docker registry
+    usage:
+      version: 2.1
+
+      orbs:
+        docker: ledger/docker@volatile
+
+      workflows:
+        build_test_and_publish:
+          jobs:
+            - docker/build_image
+            - docker/test_image
+            - docker/publish_image
+
+  setup_dependencies_services:
+    description: |
+      Use docker-compose to setup an environment powering the needed service dependencies
+    usage:
+      version: 2.1
+
+      orbs:
+        docker: ledger/docker@volatile
+
+      workflows:
+        build_test_and_publish:
+          jobs:
+            - docker/build_image
+            - docker/test_image:
+                docker_compose_configuration: docker-compose_circleci.yml
+                docker_compose_env_vars: |
+                  MYSQL_VERSION="5.7"
+                  MYSQL_USER="my_user"
+                  MYSQL_PASSWORD="my_password"
+                  MYSQL_DATABASE="my_db
+                # each goss run needs to start from a fresh docker-compose environment
+                docker_compose_single_use: true
+                dgoss_docker_env_vars: |
+                  APP_DB_HOST="mysql-server"
+                  APP_DB_USER="my_db"
+                  APP_DB_PASSWORD="my_password"
+                  APP_DB_SCHEMA="my_db"
+            - docker/publish_image
+
+executors:
+  machine-executor:
+    description: Image embedding docker 18.06.0-ce, docker-compose 1.22.0
+    machine:
+      image: circleci/classic:201808-01
+
+commands:
+  set_image_name_env_vars:
+    description: Set environment variables used to name the docker image
+    steps:
+      - run:
+          command: |
+            echo 'export DOCKER_NAMESPACE="${DOCKER_ORGANIZATION:-${DOCKER_USERNAME}}"' >> $BASH_ENV
+            # On public repositories, CircleCI environment variables are not transmitted to jobs triggered by a forked PR
+            # so if the DOCKER_NAMESPACE is empty then fall back to a generic CircleCI-provided variable
+            echo 'export DOCKER_NAMESPACE="${DOCKER_NAMESPACE:-${CIRCLE_USERNAME}}"' >> $BASH_ENV
+            echo 'export PROJECT_NAME="$(echo $CIRCLE_PROJECT_REPONAME | sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
+  docker_hub_login:
+    description: Login to the Docker Hub registry
+    steps:
+      - run:
+          name: Check environment variables existence
+          command: |
+            if [[ -z "${DOCKER_USERNAME}" ]]; then
+              echo "DOCKER_USERNAME is not set, will not be able to push image."
+              exit 1
+            fi
+
+            if [[ -z "${DOCKER_PASSWORD}" ]]; then
+              echo "DOCKER_PASSWORD is not set, will not be able to push image."
+              exit 1
+            fi
+      - run: docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+  load_image:
+    description: |
+      Loads the docker image that has been built from the workspace
+    steps:
+      - attach_workspace:
+          at: ~/workspace
+      - run: docker load -i ~/workspace/docker_image.tar
+      - run:
+          name: Check docker image existence
+          command: docker inspect ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} &> /dev/null
+
+jobs:
+  build_image:
+    description: Builds and tags a Docker Image
+    executor: machine-executor
+    steps:
+      - set_image_name_env_vars
+      - checkout
+      - run:
+          name: Build Docker image
+          command: |
+            docker_args="-t ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1}"
+            echo "Executing docker build with the following arguments :" ${docker_args}
+            docker build ${docker_args} .
+      - run:
+          name: Create workspace
+          command: mkdir -pv ~/workspace
+      - run:
+          name: Save Docker image to the workspace
+          command: docker save -o ~/workspace/docker_image.tar ${DOCKER_NAMESPACE}/${PROJECT_NAME}
+      - persist_to_workspace:
+          root: ~/workspace
+          paths:
+            - docker_image.tar
+  test_image:
+    description: Enforce compliance tests on the Docker image with the goss framework
+    executor: machine-executor
+    parameters:
+      docker_compose_configuration:
+        description: |
+          Name of the docker-compose configuration file used to setup an environment powering the
+          service dependencies. The file is expected to be stored alongside the CircleCI configuration
+          config.yml.
+        type: string
+        default: ""
+      docker_compose_env_vars:
+        description: Environment variables to pass to docker-compose
+        type: string
+        default: ""
+      docker_compose_single_use:
+        description: |
+          The dgoss tool is run twice : once to get human-readable output and a second time
+          to get JUnit output that can be parsed by CircleCI.
+          Some applications may be not re-run twice from scratch because there is some persistent
+          state stored in a database.
+          If true, the docker-compose environment powering the service dependencies will be reset
+          before the second dgoss execution.
+        type: boolean
+        default: false
+      goss_version:
+        description: goss version to install
+        type: string
+        default: v0.3.6
+      dgoss_docker_env_vars:
+        description: Environment variables that dgoss should provide to the container
+        type: string
+        default: ""
+      goss_sleep:
+        description: Time to sleep after running container (and optionally goss_wait.yaml) and before running tests
+        type: string
+        default: 1s
+    steps:
+      - set_image_name_env_vars
+      - load_image
+      - checkout
+      - when:
+          condition: << parameters.docker_compose_configuration >>
+          steps:
+            - when:
+                condition: << parameters.docker_compose_env_vars >>
+                steps:
+                  - run:
+                      name: Set environment variables read by docker-compose
+                      command: echo << parameters.docker_compose_env_vars >> > .env
+            - run:
+                name: Display docker-compose configuration
+                command: |
+                  # eval is needed for the CIRCLE_WORKING_DIRECTORY variable as it contains a non-expanded '~'
+                  eval docker_compose_config=${CIRCLE_WORKING_DIRECTORY}/.circleci/<< parameters.docker_compose_configuration >>
+                  echo "export docker_compose_config='$docker_compose_config'" >> $BASH_ENV
+                  docker-compose -f $docker_compose_config -p ci config
+      - run:
+          name: Install goss and dgoss wrapper
+          command: |
+            mkdir -p ~/bin
+            curl -fsSL -o ~/bin/goss https://github.com/aelsabbahy/goss/releases/download/<< parameters.goss_version >>/goss-linux-amd64
+            curl -fsSL -o ~/bin/dgoss https://raw.githubusercontent.com/aelsabbahy/goss/<< parameters.goss_version >>/extras/dgoss/dgoss
+            chmod +rx ~/bin/goss ~/bin/dgoss
+      - when:
+          condition: << parameters.dgoss_docker_env_vars >>
+          steps:
+            - run:
+                name: Set docker environment variables to be passed by dgoss
+                command: |
+                  echo << parameters.dgoss_docker_env_vars >> > docker.env
+                  echo "export docker_opts='${docker_opts:-} --env-file docker.env'" >> $BASH_ENV
+      - when:
+          condition: << parameters.docker_compose_configuration >>
+          steps:
+            - docker_hub_login
+            - run:
+                name: Setup docker-compose environment powering service dependencies
+                command: |
+                  docker-compose -f $docker_compose_config -p ci up -d
+                  # The default bridge network created by docker-compose is named "<project name>_default"
+                  echo "export docker_opts='${docker_opts:-} --network ci_default'" >> $BASH_ENV
+            - run:
+                name: Wait for all service dependencies to become healthy
+                command: |
+                  for try in {1..10}; do
+                    sleep 30
+                    if [ "$(docker ps --filter 'name=ci_' --filter 'health=unhealthy' --filter 'health=starting' --format '{{.Names}}')" = "" ]; then
+                      docker-compose -f ~/workspace/docker-compose_circleci.yaml -p ci ps
+                      exit 0
+                    fi
+                    docker-compose -f ~/workspace/docker-compose_circleci.yaml -p ci ps
+                    echo
+                  done
+                  echo "Error : some service dependencies are not healthy at the end of the timeout" >&2
+                  exit 1
+      - run:
+          name: Set goss environment variables
+          command: |
+            eval GOSS_FILES_PATH="${CIRCLE_WORKING_DIRECTORY}/.circleci"
+            echo "export GOSS_FILES_PATH='$GOSS_FILE_PATH'" >> $BASH_ENV
+            echo "export GOSS_SLEEP='<< parameters.goss_sleep >>'" >> $BASH_ENV
+      - run:
+          name: Run goss validation
+          command: |
+            echo "Executing dgoss run with the following arguments :" $docker_opts
+            dgoss run $docker_opts ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1}
+      - when:
+          condition: << parameters.docker_compose_single_use >>
+          steps:
+            - run:
+                name: Reset docker-compose environment
+                command: |
+                  docker-compose -f $docker_compose_config -p ci down
+                  docker-compose -f $docker_compose_config -p ci up -d
+      - run:
+          name: Run goss validation again to extract the JUnit result
+          command: |
+            mkdir -p /tmp/goss-test-results/goss
+            GOSS_OPTS="--format junit" dgoss run $docker_opts ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} 2>&1 | \
+              sed -n '/^<[[:alpha:]/?]/p' > /tmp/goss-test-results/goss/results.xml
+      - store_test_results:
+          path: /tmp/goss-test-results
+  publish_image:
+    description: Publish docker image to the Docker Hub registry
+    executor: machine-executor
+    steps:
+      - set_image_name_env_vars
+      - load_image
+      - run:
+          name: Add Docker tag on the image
+          command: |
+            if [ -n "${CIRCLE_BRANCH}" -a -z "${CIRCLE_TAG}" ]; then
+              if [ "${CIRCLE_BRANCH}" = "master" ]; then
+                docker_tag="${DOCKER_NAMESPACE}/${PROJECT_NAME}:latest"
+              else
+                BRANCH=$(echo $CIRCLE_BRANCH | sed 's/[^[:alnum:]_.-]/_/g')
+                docker_tag="${DOCKER_NAMESPACE}/${PROJECT_NAME}:${BRANCH}"
+              fi
+            elif [ -n "${CIRCLE_TAG}" -a -z "${CIRCLE_BRANCH}" ]; then
+              TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
+              docker_tag="${DOCKER_NAMESPACE}/${PROJECT_NAME}:${TAG}"
+            else
+              echo "Unexpected condition state :" >&2
+              echo "The build should be either commit-triggered or tag-triggered" >&2
+              echo "So CircleCI should provide either the BRANCH or the TAG environment variable" >&2
+              exit 1
+            fi
+            echo "Adding the following tag on the Docker image : ${docker_tag}"
+            docker tag ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} ${docker_tag}
+      - docker_hub_login
+      - run: docker push ${DOCKER_NAMESPACE}/${PROJECT_NAME}
