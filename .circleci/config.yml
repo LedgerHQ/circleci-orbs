@@ -120,7 +120,7 @@ workflows:
           filters:
             branches:
               # This job is not intended to be run from forked pull-requests
-              # because it needs the CircleCI API token
+              # because it needs a CircleCI API token
               ignore:
                 - /^pull\/.*$/
       - prod-release:
