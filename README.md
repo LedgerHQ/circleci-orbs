@@ -6,10 +6,24 @@ CircleCI orbs maintained by LedgerHQ
 [Orb documentation](https://circleci.com/orbs/registry/orb/ledger/chef)
 
 This orb implements multiple validations on a Chef cookbook :
-- it checks that the cookbook version is valid and has been increased. The cookbook version is expected to be read from a file named `VERSION` and located at the root of the repository.
+- it checks that the cookbook version is valid and has been increased. See the [note about the cookbook version](#note-about-the-cookbook-version).
 - it checks the Chef syntax with Foodcritic.
 - it checks the Ruby syntax with Rubocop.
 - it checks that all JSON files are valid.
+
+### Note about the cookbook version
+
+The cookbook version is expected to be read from a file named `VERSION` and located at the root of the repository.
+
+Here is an example of cookbook configuration :
+- metadata.rb :
+    ```
+    version IO.read(File.join(File.dirname(__FILE__), 'VERSION'))
+    ```
+- VERSION :
+    ```
+    0.0.1
+    ```
 
 ## Docker
 
@@ -22,6 +36,7 @@ To be able to test under adequate conditions, it may use Docker Compose to launc
 - it publishes the image on the Docker Hub registry. It sets the following Docker tags : the commit SHA1 and either the branch name (for a commit-triggered CI run) or the Git tag (for a tag-triggered CI run).
 
 ### Note about goss
+
 [Goss](https://github.com/aelsabbahy/goss) is a self-sufficient tool that allows to easily and quickly execute a sequence of checks like 
 testing if a process is running, testing if a port is listening, testing the return status of a command, querying a HTTP server and
 [much more](https://github.com/aelsabbahy/goss/blob/master/docs/manual.md#available-tests).
