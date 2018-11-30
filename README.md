@@ -1,6 +1,16 @@
 # circleci-orbs &middot; [![CircleCI](https://circleci.com/gh/LedgerHQ/circleci-orbs.svg?style=shield)](https://circleci.com/gh/LedgerHQ/circleci-orbs)
 CircleCI orbs maintained by LedgerHQ
 
+## Chef
+
+[Orb documentation](https://circleci.com/orbs/registry/orb/ledger/chef)
+
+This orb implements multiple validations on a Chef cookbook :
+- it checks that the cookbook version is valid and has been increased. The cookbook version is expected to be read from a file named `VERSION` and located at the root of the repository.
+- it checks the Chef syntax with Foodcritic.
+- it checks the Ruby syntax with Rubocop.
+- it checks that all JSON files are valid.
+
 ## Docker
 
 [Orb documentation](https://circleci.com/orbs/registry/orb/ledger/docker)
