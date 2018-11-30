@@ -1,0 +1,79 @@
+version: 2.1
+
+description: Validate a Chef cookbook
+
+examples:
+  chef_validate:
+    description: Validate a Chef cookbook
+    usage:
+      version: 2.1
+
+      orbs:
+        chef: ledger/chef@volatile
+
+      workflows:
+        chef_validate:
+          jobs:
+            - chef/check_cookbook_version
+            - chef/foodcritic:
+                requires:
+                  - chef/check_cookbook_version
+            - chef/validate_json:
+                requires:
+                  - chef/check_cookbook_version
+            - chef/rubocop:
+                requires:
+                  - chef/check_cookbook_version
+
+jobs:
+  check_cookbook_version:
+    description: Check that the cookbook version has been upgraded
+    machine: true
+    steps:
+      - checkout
+      - run:
+          name: Check that the cookbook version has been upgraded
+          command: |
+            base="origin/master"
+            if [ "${CIRCLE_BRANCH}" = "master" ]; then
+              base="master^1"
+            fi
+
+            semver="[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)"
+            if ! egrep -q "^${semver}$" VERSION; then
+              echo "Error : Missing or invalid version in the file VERSION" >&2
+              exit 1
+            fi
+
+            oldver=$(git diff ${base}..HEAD VERSION | egrep "^-${semver}$" | sed -n 's/-//p')
+            newver=$(git diff ${base}..HEAD VERSION | egrep "^\+${semver}$" | sed -n 's/+//p')
+            # Check that the newer version is superior to the older version
+            if [[ -z ${oldver} ]] || [[ -z ${newver} ]] || [ "$(echo -e "$oldver\n$newver" | sort -V | head -n 1)" != "$oldver" ]; then
+              echo "Error : the cookbook version isn't valid or hasn't been upgraded" >&2
+              exit 1
+            fi
+            echo "Cookbook version upgrade : ${oldver} -> ${newver}"
+  foodcritic:
+    description: Execute Foodcritic linter
+    docker:
+      - image: chef/chefdk
+    steps:
+      - checkout
+      - run: /opt/chefdk/bin/foodcritic .
+  validate_json:
+    description: Validate JSON files
+    machine: true
+    steps:
+      - checkout
+      - run:
+          name: Validate JSON files with jq
+          command: find . -name "*\.json" | parallel --tag jq '.' > /dev/null
+  rubocop:
+    description: Execute Rubocop analyzer
+    docker:
+      - image: chef/chefdk
+    steps:
+      - checkout
+      - run:
+          name: Check Rubocop offenses
+          command: /opt/chefdk/embedded/bin/rubocop
