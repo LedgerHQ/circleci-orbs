@@ -78,11 +78,13 @@ commands:
       - run:
           name: Write environment variables to $BASH_ENV
           command: |
-            echo 'export DOCKER_NAMESPACE="${DOCKER_ORGANIZATION:-${DOCKER_USERNAME}}"' >> $BASH_ENV
+            DOCKER_NAMESPACE="${DOCKER_ORGANIZATION:-${DOCKER_USERNAME}}"
             # On public repositories, CircleCI environment variables are not transmitted to jobs triggered by a forked PR
             # so if the DOCKER_NAMESPACE is empty then fall back to a generic CircleCI-provided variable
-            echo 'export DOCKER_NAMESPACE="${DOCKER_NAMESPACE:-${CIRCLE_USERNAME}}"' >> $BASH_ENV
-            echo 'export PROJECT_NAME="$(echo $CIRCLE_PROJECT_REPONAME | sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
+            DOCKER_NAMESPACE="${DOCKER_NAMESPACE:-${CIRCLE_USERNAME}}"
+            # Docker repository name must be lowercase
+            eval echo 'export DOCKER_NAMESPACE="${DOCKER_NAMESPACE,,}"' >> $BASH_ENV
+            eval echo 'export PROJECT_NAME="$(echo $CIRCLE_PROJECT_REPONAME | sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
   docker_hub_login:
     description: Login to the Docker Hub registry
     steps:
