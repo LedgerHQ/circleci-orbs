@@ -1,12 +1,6 @@
 version: 2.1
 
-description: |
-  Build, test and publish Docker images to the Docker Hub registry
-  To use this orb, you have to define the following environment variables
-  on the CircleCI project settings :
-  - DOCKER_USERNAME
-  - DOCKER_PASSWORD
-  - DOCKER_ORGANIZATION if the repository is managed by a Github organization
+description: Build, test and publish Docker images to the Docker Hub registry
 
 examples:
   standard_build_test_and_publish:
@@ -65,6 +59,22 @@ examples:
                 requires:
                   - docker/test_image
 
+aliases:
+  - &wait_compose_healthy
+    name: Wait for all service dependencies to become healthy
+    command: |
+      for try in {1..10}; do
+        sleep 30
+        if [ "$(docker ps --filter 'name=ci_' --filter 'health=unhealthy' --filter 'health=starting' --format '{{.Names}}')" = "" ]; then
+          docker-compose -f $docker_compose_config -p ci ps
+          exit 0
+        fi
+        docker-compose -f $docker_compose_config -p ci ps
+        echo
+      done
+      echo "Error : some service dependencies are not healthy at the end of the timeout" >&2
+      exit 1
+
 executors:
   machine-executor:
     description: Image embedding docker 18.06.0-ce, docker-compose 1.22.0
@@ -78,11 +88,13 @@ commands:
       - run:
           name: Write environment variables to $BASH_ENV
           command: |
-            echo 'export DOCKER_NAMESPACE="${DOCKER_ORGANIZATION:-${DOCKER_USERNAME}}"' >> $BASH_ENV
+            DOCKER_NAMESPACE="${DOCKER_ORGANIZATION:-${DOCKER_USERNAME}}"
             # On public repositories, CircleCI environment variables are not transmitted to jobs triggered by a forked PR
             # so if the DOCKER_NAMESPACE is empty then fall back to a generic CircleCI-provided variable
-            echo 'export DOCKER_NAMESPACE="${DOCKER_NAMESPACE:-${CIRCLE_USERNAME}}"' >> $BASH_ENV
-            echo 'export PROJECT_NAME="$(echo $CIRCLE_PROJECT_REPONAME | sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
+            DOCKER_NAMESPACE="${DOCKER_NAMESPACE:-${CIRCLE_USERNAME}}"
+            # Docker repository name must be lowercase
+            eval echo 'export DOCKER_NAMESPACE="${DOCKER_NAMESPACE,,}"' >> $BASH_ENV
+            eval echo 'export PROJECT_NAME="$(echo $CIRCLE_PROJECT_REPONAME | sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
   docker_hub_login:
     description: Login to the Docker Hub registry
     steps:
@@ -222,20 +234,7 @@ jobs:
                   docker-compose -f $docker_compose_config -p ci up -d
                   # The default bridge network created by docker-compose is named "<project name>_default"
                   echo "export docker_opts='${docker_opts:-} --network ci_default'" >> $BASH_ENV
-            - run:
-                name: Wait for all service dependencies to become healthy
-                command: |
-                  for try in {1..10}; do
-                    sleep 30
-                    if [ "$(docker ps --filter 'name=ci_' --filter 'health=unhealthy' --filter 'health=starting' --format '{{.Names}}')" = "" ]; then
-                      docker-compose -f $docker_compose_config -p ci ps
-                      exit 0
-                    fi
-                    docker-compose -f $docker_compose_config -p ci ps
-                    echo
-                  done
-                  echo "Error : some service dependencies are not healthy at the end of the timeout" >&2
-                  exit 1
+            - run: *wait_compose_healthy
       - run:
           name: Set goss environment variables
           command: |
@@ -255,18 +254,7 @@ jobs:
                 command: |
                   docker-compose -f $docker_compose_config -p ci down
                   docker-compose -f $docker_compose_config -p ci up -d
-                  echo "Waiting for all service dependencies to become healthy"
-                  for try in {1..10}; do
-                    sleep 30
-                    if [ "$(docker ps --filter 'name=ci_' --filter 'health=unhealthy' --filter 'health=starting' --format '{{.Names}}')" = "" ]; then
-                      docker-compose -f $docker_compose_config -p ci ps
-                      exit 0
-                    fi
-                    docker-compose -f $docker_compose_config -p ci ps
-                    echo
-                  done
-                  echo "Error : some service dependencies are not healthy at the end of the timeout" >&2
-                  exit 1
+            - run: *wait_compose_healthy
       - run:
           name: Run goss validation again to extract the JUnit result
           command: |

@@ -35,6 +35,13 @@ This orb implements the following actions :
 To be able to test under adequate conditions, it may use Docker Compose to launch a complete environment powering all the needed service dependencies (database, third-party component).
 - it publishes the image on the Docker Hub registry. It sets the following Docker tags : the commit SHA1 and either the branch name (for a commit-triggered CI run) or the Git tag (for a tag-triggered CI run).
 
+To be able to publish to the Docker Hub registry, you have to define the following environment variables on the CircleCI project settings :
+- DOCKER_USERNAME
+- DOCKER_PASSWORD
+- DOCKER_ORGANIZATION if the repository is managed by a Github organization
+
+**BEWARE OF PUBLIC REPOSITORIES** : if you allow CircleCI to run builds from forked pull request, you must take care of not sharing these environment variables to forked pull request as this will allow anyone to retrieve your Docker Hub credentials. Check that the settings *Pass secrets to builds from forked pull requests* is disabled.
+
 ### Note about goss
 
 [Goss](https://github.com/aelsabbahy/goss) is a self-sufficient tool that allows to easily and quickly execute a sequence of checks like 
