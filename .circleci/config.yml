@@ -30,13 +30,13 @@ jobs:
             # eval is needed for the CIRCLE_WORKING_DIRECTORY variable as it contains a non-expanded '~'
             orb_list=$(eval find ${CIRCLE_WORKING_DIRECTORY} -name "orb.yml")
             for orb_path in $orb_list; do
-              local_orb_checksum=$(md5sum $orb_path | awk '{ print $1 }')
+              local_orb_checksum=$(sed '/^$/d' $orb_path | md5sum | awk '{ print $1 }')
               orb_name=$(echo $orb_path | awk -F '/' '{ print $(NF-1) }')
               # If the orb has never been published, set an empty checksum
               if ! $(circleci orb list ledger | grep -vF "(Not published)" | grep -qw ${orb_name}); then
                 published_orb_checksum=
               else
-                published_orb_checksum=$(circleci orb source ledger/${orb_name}@volatile | md5sum | awk '{ print $1 }')
+                published_orb_checksum=$(circleci orb source ledger/${orb_name}@volatile | sed '/^$/d' | md5sum | awk '{ print $1 }')
               fi
               if [ "${local_orb_checksum}" != "${published_orb_checksum}" ]; then
                 echo $orb_path >> ~/workspace/updated_orbs_path
@@ -91,6 +91,7 @@ jobs:
               fi
               echo "Publishing on CircleCI registry a dev release of orb : ledger/${orb_name}@dev:${CIRCLE_BRANCH}-${CIRCLE_SHA1}"
               circleci --token $CIRCLECI_API_TOKEN orb publish $orb_path ledger/${orb_name}@dev:${CIRCLE_BRANCH}-${CIRCLE_SHA1}
+              echo
             done < ~/workspace/updated_orbs_path
   prod-release:
     executor: cli/default
@@ -105,6 +106,7 @@ jobs:
             while read orb_name; do
               echo "Promoting on CircleCI registry a production release of orb : ledger/${orb_name}@dev:${CIRCLE_BRANCH}-${CIRCLE_SHA1}"
               circleci --token $CIRCLECI_API_TOKEN orb publish promote ledger/${orb_name}@dev:${CIRCLE_BRANCH}-${CIRCLE_SHA1} patch
+              echo
             done < ~/workspace/updated_orbs_name
 
 workflows:
