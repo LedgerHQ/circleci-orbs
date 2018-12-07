@@ -15,15 +15,47 @@ examples:
         chef_validate:
           jobs:
             - chef/check_cookbook_version
-            - chef/foodcritic:
-                requires:
-                  - chef/check_cookbook_version
             - chef/validate_json:
                 requires:
                   - chef/check_cookbook_version
             - chef/cookstyle:
                 requires:
                   - chef/check_cookbook_version
+            - chef/foodcritic:
+                requires:
+                  - chef/check_cookbook_version
+
+commands:
+  install_chef_workstation:
+    description: Install Chef Workstation bundle. This command only works on Debian-based OS
+    steps:
+      - run: curl -fsS https://packages.chef.io/chef.asc | sudo apt-key add -
+      - run: 
+          name: Setup Chef repository
+          command: |
+            if ! command -v apt-add-repository &> /dev/null; then
+              sudo apt-get update
+              sudo apt-get install -y software-properties-common
+            fi
+            sudo apt-add-repository "https://packages.chef.io/repos/apt/stable"
+      - run: sudo apt-get update
+      - run: sudo apt-get install -y chef-workstation
+      - run: echo 'eval "$(chef shell-init bash)"' >> $BASH_ENV
+  get_data_bags:
+    description: Retrieve data bags needed by the cookbook
+    parameters:
+      vcs_url:
+        description: The version control systems URL where the data bags are hosted
+        type: string
+      path:
+        description: The path where the data bags should be put
+        type: string
+    steps:
+      - run: mkdir -p ~/.ssh
+      - run:
+          command: git clone << parameters.vcs_url >> << parameters.path >>
+          environment:
+            GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=no
 
 jobs:
   check_cookbook_version:
@@ -82,3 +114,29 @@ jobs:
     steps:
       - checkout
       - run: foodcritic .
+  kitchen:
+    description: Execute Test Kitchen
+    # Dokken Kitchen driver doesn't work when launched from a Docker container
+    # https://github.com/someara/kitchen-dokken/issues/160#issuecomment-423829306
+    machine: true
+    parameters:
+      data_bags_vcs_url:
+        description: The version control systems URL where the data bags are hosted
+        type: string
+      data_bags_path:
+        description: |
+          The path where the data bags should be put.
+          It will be passed to Test Kitchen through the DATA_BAGS_PATH environment variable
+        type: string
+    steps:
+      - checkout
+      - install_chef_workstation
+      - get_data_bags:
+          vcs_url: << parameters.data_bags_vcs_url >>
+          path: << parameters.data_bags_path >>
+      - run:
+          # The --no-color option is not entirely respected for now
+          # https://github.com/inspec/kitchen-inspec/issues/103
+          command: kitchen test --destroy=never --no-color
+          environment:
+            DATA_BAGS_PATH: << parameters.data_bags_path >>
