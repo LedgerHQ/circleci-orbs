@@ -21,7 +21,7 @@ examples:
             - chef/validate_json:
                 requires:
                   - chef/check_cookbook_version
-            - chef/rubocop:
+            - chef/cookstyle:
                 requires:
                   - chef/check_cookbook_version
 
@@ -53,13 +53,6 @@ jobs:
               exit 1
             fi
             echo "Cookbook version upgrade : ${oldver} -> ${newver}"
-  foodcritic:
-    description: Execute Foodcritic linter
-    docker:
-      - image: chef/chefdk
-    steps:
-      - checkout
-      - run: /opt/chefdk/bin/foodcritic .
   validate_json:
     description: Validate JSON files
     machine: true
@@ -74,6 +67,18 @@ jobs:
       - image: chef/chefdk
     steps:
       - checkout
-      - run:
-          name: Check Rubocop offenses
-          command: /opt/chefdk/embedded/bin/rubocop
+      - run: rubocop
+  cookstyle:
+    description: Execute Cookstyle analyzer
+    docker:
+      - image: chef/chefdk
+    steps:
+      - checkout
+      - run: cookstyle
+  foodcritic:
+    description: Execute Foodcritic linter
+    docker:
+      - image: chef/chefdk
+    steps:
+      - checkout
+      - run: foodcritic .

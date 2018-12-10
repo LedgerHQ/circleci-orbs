@@ -7,9 +7,9 @@ CircleCI orbs maintained by LedgerHQ
 
 This orb implements multiple validations on a Chef cookbook :
 - it checks that the cookbook version is valid and has been increased. See the [note about the cookbook version](#note-about-the-cookbook-version).
-- it checks the Chef syntax with Foodcritic.
-- it checks the Ruby syntax with Rubocop.
 - it checks that all JSON files are valid.
+- it checks the Ruby syntax with Rubocop or Cookstyle.
+- it checks the Chef syntax with Foodcritic.
 
 ### Note about the cookbook version
 
