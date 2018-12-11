@@ -4,7 +4,7 @@ description: Validate a Chef cookbook
 
 examples:
   chef_validate:
-    description: Validate a Chef cookbook
+    description: Validate a Chef cookbook & run Test Kitchen with JUnit output
     usage:
       version: 2.1
 
@@ -24,6 +24,34 @@ examples:
             - chef/foodcritic:
                 requires:
                   - chef/check_cookbook_version
+            - chef/kitchen:
+                junit_output: /tmp/test-kitchen-results/
+                requires:
+                  - chef/validate_json
+                  - chef/cookstyle
+                  - chef/foodcritic
+
+  test_kitchen_with_external_databags:
+    description: Get an external databag from a VCS & run Test Kitchen
+    usage:
+      version: 2.1
+
+      orbs:
+        chef: ledger/chef@volatile
+
+      workflows:
+        test_kitchen:
+          jobs:
+            - chef/kitchen:
+                data_bags_vcs_url: git@github.com:my_databags_repository
+                data_bags_path: /tmp/databags/
+
+aliases:
+  - &test_kitchen
+    name: Test Kitchen
+    # The --no-color option is not entirely respected for now
+    # https://github.com/inspec/kitchen-inspec/issues/103
+    command: kitchen test --destroy=never --no-color
 
 commands:
   install_chef_workstation:
@@ -50,6 +78,7 @@ commands:
       path:
         description: The path where the data bags should be put
         type: string
+        default: /tmp/databags/
     steps:
       - run: mkdir -p ~/.ssh
       - run:
@@ -123,11 +152,13 @@ jobs:
       data_bags_vcs_url:
         description: The version control systems URL where the data bags are hosted
         type: string
+        default: ""
       data_bags_path:
         description: |
           The path where the data bags should be put.
           It will be passed to Test Kitchen through the DATA_BAGS_PATH environment variable
         type: string
+        default: /tmp/databags/
       junit_output:
         description: The path where Test Kitchen may store its output in JUnit format
         type: string
@@ -135,14 +166,19 @@ jobs:
     steps:
       - checkout
       - install_chef_workstation
-      - get_data_bags:
-          vcs_url: << parameters.data_bags_vcs_url >>
-          path: << parameters.data_bags_path >>
-      - run:
-          # The --no-color option is not entirely respected for now
-          # https://github.com/inspec/kitchen-inspec/issues/103
-          command: kitchen test --destroy=never --no-color
-          environment:
-            DATA_BAGS_PATH: << parameters.data_bags_path >>
+      - when:
+          condition: << parameters.data_bags_vcs_url >>
+          steps:
+            - get_data_bags:
+                vcs_url: << parameters.data_bags_vcs_url >>
+                path: << parameters.data_bags_path >>
+            - run:
+                <<: *test_kitchen
+                environment:
+                  DATA_BAGS_PATH: << parameters.data_bags_path >>
+      - unless:
+          condition: << parameters.data_bags_vcs_url >>
+          steps:
+            - run: *test_kitchen
       - store_test_results:
           path: << parameters.junit_output >>
