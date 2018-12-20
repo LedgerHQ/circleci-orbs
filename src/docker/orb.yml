@@ -126,9 +126,15 @@ jobs:
   build_image:
     description: Builds and tags a Docker Image
     executor: machine-executor
+    parameters:
+      after_checkout:
+        description: Steps that will be executed after the sources checkout but before the Docker image build
+        type: steps
+        default: []
     steps:
       - set_image_name_env_vars
       - checkout
+      - steps: << parameters.after_checkout >>
       - run:
           name: Build Docker image
           command: |
