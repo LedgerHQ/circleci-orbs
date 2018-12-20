@@ -51,7 +51,7 @@ aliases:
     name: Test Kitchen
     # The --no-color option is not entirely respected for now
     # https://github.com/inspec/kitchen-inspec/issues/103
-    command: kitchen test --destroy=never --no-color
+    command: kitchen test --destroy=never --no-color << parameters.test_kitchen_instance >>
 
 commands:
   install_chef_workstation:
@@ -108,12 +108,12 @@ jobs:
 
             oldver=$(git diff ${base}..HEAD VERSION | egrep "^-${semver}$" | sed -n 's/-//p')
             newver=$(git diff ${base}..HEAD VERSION | egrep "^\+${semver}$" | sed -n 's/+//p')
+            echo "Cookbook version upgrade : ${oldver} -> ${newver}"
             # Check that the newer version is superior to the older version
             if [[ -z ${oldver} ]] || [[ -z ${newver} ]] || [ "$(echo -e "$oldver\n$newver" | sort -V | head -n 1)" != "$oldver" ]; then
               echo "Error : the cookbook version isn't valid or hasn't been upgraded" >&2
               exit 1
             fi
-            echo "Cookbook version upgrade : ${oldver} -> ${newver}"
   validate_json:
     description: Validate JSON files
     machine: true
@@ -159,6 +159,10 @@ jobs:
           It will be passed to Test Kitchen through the DATA_BAGS_PATH environment variable
         type: string
         default: /tmp/databags/
+      test_kitchen_instance:
+        description: Run Test Kitchen on this instance or set of instances in case of a regexp
+        type: string
+        default: all
       junit_output:
         description: The path where Test Kitchen may store its output in JUnit format
         type: string
