@@ -59,6 +59,27 @@ examples:
                 requires:
                   - docker/test_image
 
+  restore_cache_during_build_image:
+    description: |
+      A workflow using the `after_checkout` step in `docker/build_image` to restore cache
+      before `docker build` is called.
+    usage:
+      version: 2.1
+
+      orbs:
+        docker: ledger/docker@volatile
+
+      workflows:
+        build_with_cache:
+          jobs:
+            - docker/build_image:
+                after_checkout:
+                  - restore_cache:
+                      keys:
+                        - my-repository-{{ .Branch }}-{{ checksum "build.file" }}
+                        - my-repository-{{ .Branch }}-
+                        - my-repository
+
 aliases:
   - &wait_compose_healthy
     name: Wait for all service dependencies to become healthy
