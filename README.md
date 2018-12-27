@@ -12,6 +12,8 @@ This orb implements the following actions on a Chef cookbook :
   - it checks the Ruby syntax with Rubocop or Cookstyle.
   - it checks the Chef syntax with Foodcritic.
 - it tests the cookbook by running it with Kitchen.
+- it uploads the cookbook on a Chef Server with Berkshelf. To use that job, [a Chef client must first be created and allowed to upload cookbooks](#creation-of-a-Chef-client-allowed-to-upload-cookbooks).
+  The job takes care to exclude [fixture cookbooks defined inside a group named "integration"](https://kitchen.ci/docs/reference/fixtures/).
 
 ### Note about the cookbook version
 
@@ -26,6 +28,37 @@ Here is an example of cookbook configuration :
     ```
     0.0.1
     ```
+
+### Creation of a Chef client allowed to upload cookbooks
+
+A Chef client can easily be created with Knife :
+
+```sh
+knife client create -f circleci.pem -d circleci
+knife acl add client circleci containers cookbooks create
+knife acl add client circleci containers sandboxes create
+knife acl bulk add client circleci cookbooks ".*" update
+```
+
+The RSA key needs to be provided to CircleCI so that it can authenticate to the Chef Server.
+The orb retrieves the private key in base64 format (needed for storing multi-line data) by looking for a CircleCI environment variable named `CHEF_KEY` :
+
+```sh
+base64 -w 0 circleci.pem
+```
+
+In the context of the Chef Server's API a container is just the API endpoint used when creating a new object of a particular object type.
+Two containers are used when creating (uploading) new cookbooks : the cookbooks and sandboxes containers.
+
+For reference, here is an explanation about the sandbox container use :
+> A Sandbox is a temporary list of files that you intend to upload. The actual
+> files you upload are stored in an S3-alike service (bookshelf) or real S3
+> (Hosted Chef does this, you can configure it on your own server as well if
+> you wish). Therefore Chef Server needs a mechanism to know what files you’ve
+> promised to upload while it waits for you to upload them to a separate
+> service. That’s what the sandbox does.
+
+[source](https://discourse.chef.io/t/upload-create-cookbooks-using-client/7222/14)
 
 ## Docker
 

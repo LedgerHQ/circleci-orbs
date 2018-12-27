@@ -47,6 +47,24 @@ examples:
                 data_bags_vcs_url: git@github.com:my_databags_repository
                 data_bags_path: /tmp/databags/
 
+  upload_cookbook:
+    description: Upload the cookbook on a Chef Server
+    usage:
+      version: 2.1
+
+      orbs:
+        chef: ledger/chef@volatile
+
+      workflows:
+        upload_cookbook:
+          jobs:
+            - chef/berks_upload:
+                chef_server_url: https://api.chef.io/organizations/my_chef_org
+                client_name: circleci
+                filters:
+                  branches:
+                    only: master
+
 aliases:
   - &test_kitchen
     name: Test Kitchen
@@ -59,7 +77,7 @@ commands:
     description: Install Chef Workstation bundle. This command only works on Debian-based OS
     steps:
       - run: curl -fsS https://packages.chef.io/chef.asc | sudo apt-key add -
-      - run: 
+      - run:
           name: Setup Chef repository
           command: |
             if ! command -v add-apt-repository &> /dev/null; then
@@ -187,3 +205,28 @@ jobs:
             - run: *test_kitchen
       - store_test_results:
           path: << parameters.junit_output >>
+  berks_upload:
+    description: Use Berkshelf to upload the cookbook on a Chef Server
+    docker:
+      - image: chef/chefdk
+    parameters:
+      chef_server_url:
+        description: The Chef server URL
+        type: string
+      client_name:
+        description: |
+          The user name used by knife to sign requests made by the API client to the Chef server.
+          Authentication fails if the user name does not match the private key.
+          The private key is read from the CircleCI environment variable : CHEF_KEY
+        type: string
+        default: circleci
+    steps:
+      - checkout
+      - run:
+          name: Setup Berkshelf
+          command: |
+            echo $CHEF_KEY | base64 --decode > ~/chef_key
+            chmod 400 ~/chef_key
+            knife configure --server-url << parameters.chef_server_url >> --user << parameters.client_name >> --key ~/chef_key
+      - run: berks install --except=integration
+      - run: berks upload --except=integration
