@@ -25,6 +25,7 @@ examples:
                 requires:
                   - chef/check_cookbook_version
             - chef/kitchen:
+                test_kitchen_instance: all
                 junit_output: /tmp/test-kitchen-results/
                 requires:
                   - chef/validate_json
@@ -149,6 +150,14 @@ jobs:
     # https://github.com/someara/kitchen-dokken/issues/160#issuecomment-423829306
     machine: true
     parameters:
+      test_kitchen_instance:
+        description: Run Test Kitchen on this instance or set of instances in case of a regexp
+        type: string
+        default: all
+      junit_output:
+        description: The path where Test Kitchen may store its output in JUnit format
+        type: string
+        default: /tmp/test-kitchen-results/
       data_bags_vcs_url:
         description: The version control systems URL where the data bags are hosted
         type: string
@@ -159,14 +168,6 @@ jobs:
           It will be passed to Test Kitchen through the DATA_BAGS_PATH environment variable
         type: string
         default: /tmp/databags/
-      test_kitchen_instance:
-        description: Run Test Kitchen on this instance or set of instances in case of a regexp
-        type: string
-        default: all
-      junit_output:
-        description: The path where Test Kitchen may store its output in JUnit format
-        type: string
-        default: /tmp/test-kitchen-results/
     steps:
       - checkout
       - install_chef_workstation
