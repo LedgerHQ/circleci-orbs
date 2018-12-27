@@ -62,11 +62,11 @@ commands:
       - run: 
           name: Setup Chef repository
           command: |
-            if ! command -v apt-add-repository &> /dev/null; then
+            if ! command -v add-apt-repository &> /dev/null; then
               sudo apt-get update
               sudo apt-get install -y software-properties-common
             fi
-            sudo apt-add-repository "https://packages.chef.io/repos/apt/stable"
+            sudo add-apt-repository "https://packages.chef.io/repos/apt/stable"
       - run: sudo apt-get update
       - run: sudo apt-get install -y chef-workstation
       - run: echo 'eval "$(chef shell-init bash)"' >> $BASH_ENV
