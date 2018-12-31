@@ -65,6 +65,9 @@ examples:
                   branches:
                     only: master
 
+orbs:
+  slack: circleci/slack@volatile
+
 aliases:
   - &test_kitchen
     name: Test Kitchen
@@ -220,6 +223,12 @@ jobs:
           The private key is read from the CircleCI environment variable : CHEF_KEY
         type: string
         default: circleci
+      slack_notification:
+        description: |
+          Publish a status message on Slack.
+          This feature relies on the circleci/slack orb.
+        type: boolean
+        default: true
     steps:
       - checkout
       - run:
@@ -230,3 +239,7 @@ jobs:
             knife configure --server-url << parameters.chef_server_url >> --user << parameters.client_name >> --key ~/chef_key
       - run: berks install --except=integration
       - run: berks upload --except=integration
+      - when:
+          condition: <<parameters.slack_notification>>
+          steps:
+            - slack/status
