@@ -225,7 +225,7 @@ jobs:
       - run:
           name: Setup Berkshelf
           command: |
-            echo $CHEF_KEY | base64 --decode > ~/chef_key
+            echo ${CHEF_KEY:?Missing CHEF_KEY environment variable} | base64 --decode > ~/chef_key
             chmod 400 ~/chef_key
             knife configure --server-url << parameters.chef_server_url >> --user << parameters.client_name >> --key ~/chef_key
       - run: berks install --except=integration
