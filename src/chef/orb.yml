@@ -122,20 +122,22 @@ jobs:
               base="master^1"
             fi
 
-            semver="[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)"
+            semver="[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)*"
             if ! egrep -q "^${semver}$" VERSION; then
               echo "Error : Missing or invalid version in the file VERSION" >&2
               exit 1
             fi
 
-            oldver=$(git diff ${base}..HEAD VERSION | egrep "^-${semver}$" | sed -n 's/-//p')
-            newver=$(git diff ${base}..HEAD VERSION | egrep "^\+${semver}$" | sed -n 's/+//p')
-            echo "Cookbook version upgrade : ${oldver} -> ${newver}"
+            oldver=$(git diff ${base}..HEAD VERSION | sed -rn "/^-${semver}$/ s/-//p")
+            newver=$(git diff ${base}..HEAD VERSION | sed -rn "/^\+${semver}$/ s/\+//p")
             # Check that the newer version is superior to the older version
             if [[ -z ${oldver} ]] || [[ -z ${newver} ]] || [ "$(echo -e "$oldver\n$newver" | sort -V | head -n 1)" != "$oldver" ]; then
               echo "Error : the cookbook version isn't valid or hasn't been upgraded" >&2
+              echo "Value found in the current HEAD : $(git show HEAD:VERSION)" >&2
+              echo "Value found in the ${base} commit : $(git show ${base}:VERSION)" >&2
               exit 1
             fi
+            echo "Cookbook version upgrade : ${oldver} -> ${newver}"
   validate_json:
     description: Validate JSON files
     machine: true
