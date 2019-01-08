@@ -5,15 +5,21 @@ CircleCI orbs maintained by LedgerHQ
 
 [Orb documentation](https://circleci.com/orbs/registry/orb/ledger/chef)
 
-This orb implements the following actions on a Chef cookbook :
+This orb implements the following actions for a Chef cookbook :
 - it validates that all files pertaining to a cookbook are correct :
   - it checks that the cookbook version is valid and has been increased. See the [note about the cookbook version](#note-about-the-cookbook-version).
   - it checks that all JSON files are valid.
   - it checks the Ruby syntax with Rubocop or Cookstyle.
   - it checks the Chef syntax with Foodcritic.
 - it tests the cookbook by running it with Kitchen.
-- it uploads the cookbook on a Chef Server with Berkshelf. To use that job, [a Chef client must first be created and allowed to upload cookbooks](#creation-of-a-Chef-client-allowed-to-upload-cookbooks).
-  The job takes care to exclude [fixture cookbooks defined inside a group named "integration"](https://kitchen.ci/docs/reference/fixtures/).
+- it uploads the cookbook on a Chef Server with Berkshelf. To use that job, [a Chef client must first be created and be allowed to upload cookbooks](#setup-of-a-Chef-client-allowed-to-upload-data-to-a-chef-server). The job takes care to exclude [fixture cookbooks defined inside a group named "integration"](https://kitchen.ci/docs/reference/fixtures/). Additionally the status of the upload job can optionally be published on Slack by using [CircleCI's orb](https://circleci.com/orbs/registry/orb/circleci/slack).
+
+This orb also implements the following actions for a Chef databag, environment or role :
+- it checks that the serial has been increased. As CircleCI doesn't feature any mecanism to serialize jobs execution, the purpose of the `SERIAL` file is solely to prevent concurrent executions. See the [note about the serial file](#note-about-the-serial-file).
+- it checks that all JSON files are valid.
+- it synchronizes the repository with a Chef Server using Knife. To use that job, [a Chef client must first be created and be given the necessary permissions](#setup-of-a-Chef-client-allowed-to-upload-data-to-a-chef-server). Additionally the status of the upload job can optionally be published on Slack by using [CircleCI's orb](https://circleci.com/orbs/registry/orb/circleci/slack).
+
+This orb is expected to be used on dedicated repository holding either a single cookbook or all the databags or all the environments or all the roles.
 
 ### Note about the cookbook version
 
@@ -29,22 +35,31 @@ Here is an example of cookbook configuration :
     0.0.1
     ```
 
-### Creation of a Chef client allowed to upload cookbooks
+### Note about the serial file
+
+A serial number is expected to be read from a file named `SERIAL` and located at the root of the repository. The purpose of the `SERIAL` file is solely prevent concurrent CircleCI jobs executions. This serial should be increased at every Git commit.
+
+### Setup of a Chef client allowed to upload data to a Chef Server
 
 A Chef client can easily be created with Knife :
 
 ```sh
 knife client create -f circleci.pem -d circleci
-knife acl add client circleci containers cookbooks create
-knife acl add client circleci containers sandboxes create
-knife acl bulk add client circleci cookbooks ".*" update
 ```
 
 The RSA key needs to be provided to CircleCI so that it can authenticate to the Chef Server.
-The orb retrieves the private key in base64 format (needed for storing multi-line data) by looking for a CircleCI environment variable named `CHEF_KEY` :
+The orb retrieves the private key in base64 format (needed for storing multi-line data) by looking for a CircleCI environment variable named `CHEF_KEY`. Use this command to get the data in base64 format :
 
 ```sh
 base64 -w 0 circleci.pem
+```
+
+#### Permissions to upload cookbooks
+
+```sh
+knife acl add client circleci containers cookbooks create
+knife acl add client circleci containers sandboxes create
+knife acl bulk add client circleci cookbooks ".*" update
 ```
 
 In the context of the Chef Server's API a container is just the API endpoint used when creating a new object of a particular object type.
@@ -59,6 +74,27 @@ For reference, here is an explanation about the sandbox container use :
 > service. That’s what the sandbox does.
 
 [source](https://discourse.chef.io/t/upload-create-cookbooks-using-client/7222/14)
+
+#### Permissions to update databags
+
+```sh
+knife acl add client circleci containers data create
+knife acl bulk add client circleci data ".*" delete,update
+```
+
+#### Permissions to update environments
+
+```sh
+knife acl add client circleci containers environments create
+knife acl bulk add client circleci environments ".*" delete,update
+```
+
+#### Permissions to update roles
+
+```sh
+knife acl add client circleci containers roles create
+knife acl bulk add client circleci roles ".*" delete,update
+```
 
 ## Docker
 

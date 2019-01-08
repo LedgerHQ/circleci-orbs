@@ -1,6 +1,6 @@
 version: 2.1
 
-description: Validate a Chef cookbook
+description: Deploy Chef code
 
 examples:
   chef_validate:
@@ -48,7 +48,7 @@ examples:
                 data_bags_path: /tmp/databags/
 
   upload_cookbook:
-    description: Upload the cookbook on a Chef Server
+    description: Upload the cookbook on a Chef Server and publish a message on Slack
     usage:
       version: 2.1
 
@@ -61,6 +61,26 @@ examples:
             - chef/berks_upload:
                 chef_server_url: https://api.chef.io/organizations/my_chef_org
                 client_name: circleci
+                slack_notification: true
+                filters:
+                  branches:
+                    only: master
+
+  upload_databags:
+    description: Upload the databags on a Chef Server and publish a message on Slack
+    usage:
+      version: 2.1
+
+      orbs:
+        chef: ledger/chef@volatile
+
+      workflows:
+        upload_databags:
+          jobs:
+            - chef/knife_databag_upload:
+                chef_server_url: https://api.chef.io/organizations/my_chef_org
+                client_name: circleci
+                slack_notification: true
                 filters:
                   branches:
                     only: master
@@ -74,6 +94,47 @@ aliases:
     # The --no-color option is not entirely respected for now
     # https://github.com/inspec/kitchen-inspec/issues/103
     command: kitchen test --destroy=never --no-color '<< parameters.test_kitchen_instance >>'
+  - &setup_knife
+    name: Setup Knife
+    command: |
+      echo ${CHEF_KEY:?Missing CHEF_KEY environment variable} | base64 --decode > ~/chef_key
+      chmod 400 ~/chef_key
+      knife configure --server-url << parameters.chef_server_url >> --user << parameters.client_name >> --key ~/chef_key
+  - &list_file_changes
+    name: List changed and deleted file from the master branch
+    command: |
+      base="origin/master"
+      if [ "${CIRCLE_BRANCH}" = "master" ]; then
+        base="master^1"
+      fi
+      echo "List of changed files :"
+      list_changed_files=$(git diff ${base}..HEAD --diff-filter=AMT --name-only "*\.json" | tee /dev/tty)
+      echo "export list_changed_files='$list_changed_files'" >> $BASH_ENV
+      echo "List of deleted files :"
+      list_deleted_files=$(git diff ${base}..HEAD --diff-filter=D --name-only "*\.json" | tee /dev/tty)
+      echo "export list_deleted_files='$list_deleted_files'" >> $BASH_ENV
+  - &upload_jobs_common_parameters
+    chef_server_url:
+      description: The Chef server URL
+      type: string
+    client_name:
+      description: |
+        The user name used by knife to sign requests made by the API client to the Chef server.
+        Authentication fails if the user name does not match the private key.
+        The private key is read from the CircleCI environment variable named CHEF_KEY.
+      type: string
+      default: circleci
+    slack_notification:
+      description: |
+        Publish a status message on Slack.
+        This feature relies on the circleci/slack orb.
+      type: boolean
+      default: true
+  - &publish_slack_status
+    when:
+      condition: <<parameters.slack_notification>>
+      steps:
+        - slack/status
 
 commands:
   install_chef_workstation:
@@ -122,20 +183,51 @@ jobs:
               base="master^1"
             fi
 
-            semver="[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)"
+            semver="[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)*"
             if ! egrep -q "^${semver}$" VERSION; then
               echo "Error : Missing or invalid version in the file VERSION" >&2
               exit 1
             fi
 
-            oldver=$(git diff ${base}..HEAD VERSION | egrep "^-${semver}$" | sed -n 's/-//p')
-            newver=$(git diff ${base}..HEAD VERSION | egrep "^\+${semver}$" | sed -n 's/+//p')
-            echo "Cookbook version upgrade : ${oldver} -> ${newver}"
+            oldver=$(git diff ${base}..HEAD VERSION | sed -rn "/^-${semver}$/ s/-//p")
+            newver=$(git diff ${base}..HEAD VERSION | sed -rn "/^\+${semver}$/ s/\+//p")
             # Check that the newer version is superior to the older version
             if [[ -z ${oldver} ]] || [[ -z ${newver} ]] || [ "$(echo -e "$oldver\n$newver" | sort -V | head -n 1)" != "$oldver" ]; then
               echo "Error : the cookbook version isn't valid or hasn't been upgraded" >&2
+              echo "Value found in the current HEAD : $(git show HEAD:VERSION)" >&2
+              echo "Value found in the ${base} commit : $(git show ${base}:VERSION)" >&2
               exit 1
             fi
+            echo "Cookbook version upgrade : ${oldver} -> ${newver}"
+  check_serial:
+    description: Check that the serial has been increased
+    machine: true
+    steps:
+      - checkout
+      - run:
+          name: Check that the serial has been increased
+          command: |
+            base="origin/master"
+            if [ "${CIRCLE_BRANCH}" = "master" ]; then
+              base="master^1"
+            fi
+
+            serial="[[:digit:]]+"
+            if ! egrep -q "^${serial}$" SERIAL; then
+              echo "Error : Missing or invalid serial in the file SERIAL" >&2
+              exit 1
+            fi
+
+            oldser=$(git diff ${base}..HEAD SERIAL | sed -rn "/^-${serial}$/ s/-//p")
+            newser=$(git diff ${base}..HEAD SERIAL | sed -rn "/^\+${serial}$/ s/\+//p")
+            # Check that the newer serial is superior to the older version
+            if [[ -z ${oldser} ]] || [[ -z ${newser} ]] || [ "$(echo -e "$oldser\n$newser" | sort -n | head -n 1)" != "$oldser" ]; then
+              echo "Error : the serial isn't valid or hasn't been increased" >&2
+              echo "Value found in the current HEAD : $(git show HEAD:SERIAL)" >&2
+              echo "Value found in the ${base} commit : $(git show ${base}:SERIAL)" >&2
+              exit 1
+            fi
+            echo "Serial update : ${oldser} -> ${newser}"
   validate_json:
     description: Validate JSON files
     machine: true
@@ -212,34 +304,89 @@ jobs:
     description: Use Berkshelf to upload the cookbook on a Chef Server
     docker:
       - image: chef/chefdk
-    parameters:
-      chef_server_url:
-        description: The Chef server URL
-        type: string
-      client_name:
-        description: |
-          The user name used by knife to sign requests made by the API client to the Chef server.
-          Authentication fails if the user name does not match the private key.
-          The private key is read from the CircleCI environment variable : CHEF_KEY
-        type: string
-        default: circleci
-      slack_notification:
-        description: |
-          Publish a status message on Slack.
-          This feature relies on the circleci/slack orb.
-        type: boolean
-        default: true
+    parameters: *upload_jobs_common_parameters
     steps:
       - checkout
-      - run:
-          name: Setup Berkshelf
-          command: |
-            echo ${CHEF_KEY:?Missing CHEF_KEY environment variable} | base64 --decode > ~/chef_key
-            chmod 400 ~/chef_key
-            knife configure --server-url << parameters.chef_server_url >> --user << parameters.client_name >> --key ~/chef_key
+      - run: *setup_knife
       - run: berks install --except=integration
       - run: berks upload --except=integration
-      - when:
-          condition: <<parameters.slack_notification>>
-          steps:
-            - slack/status
+      - *publish_slack_status
+  knife_databag_upload:
+    description: Use Knife to sync databags with the Chef Server
+    docker:
+      - image: chef/chefdk
+    parameters: *upload_jobs_common_parameters
+    steps:
+      - checkout
+      - run: *setup_knife
+      - run: *list_file_changes
+      - run:
+          name: Upload new or changed data bags
+          command: |
+            for file in $list_changed_files; do
+              databag=$(basename $(dirname $file))
+              databag_exists="databag_${databag}_exists"
+              if [ ${!databag_exists:-0} -ne 1 ]; then
+                knife data bag create $databag
+                declare databag_${databag}_exists=1
+              fi
+              knife data bag from file $databag $file
+            done
+      - run:
+          name: Delete removed data bags
+          command: |
+            for file in $list_deleted_files; do
+              databag=$(basename $(dirname $file))
+              item=$(basename -s ".json" $file)
+              knife data bag delete -y $databag $item
+              if [ -z "$(knife data bag show $databag)" ]; then
+                knife data bag delete -y $databag
+              fi
+            done
+      - *publish_slack_status
+  knife_environment_upload:
+    description: Use Knife to sync environments with the Chef Server
+    docker:
+      - image: chef/chefdk
+    parameters: *upload_jobs_common_parameters
+    steps:
+      - checkout
+      - run: *setup_knife
+      - run: *list_file_changes
+      - run:
+          name: Upload new or changed environments
+          command: |
+            for file in $list_changed_files; do
+              knife environment from file $file
+            done
+      - run:
+          name: Delete removed environments
+          command: |
+            for file in $list_deleted_files; do
+              env=$(basename -s ".json" $file)
+              knife environment delete -y $env
+            done
+      - *publish_slack_status
+  knife_role_upload:
+    description: Use Knife to sync roles with the Chef Server
+    docker:
+      - image: chef/chefdk
+    parameters: *upload_jobs_common_parameters
+    steps:
+      - checkout
+      - run: *setup_knife
+      - run: *list_file_changes
+      - run:
+          name: Upload new or changed roles
+          command: |
+            for file in $list_changed_files; do
+              knife role from file $file
+            done
+      - run:
+          name: Delete removed roles
+          command: |
+            for file in $list_deleted_files; do
+              role=$(basename -s ".json" $file)
+              knife role delete -y $role
+            done
+      - *publish_slack_status
