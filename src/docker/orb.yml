@@ -123,12 +123,12 @@ commands:
           name: Check environment variables existence
           command: |
             if [[ -z "${DOCKER_USERNAME}" ]]; then
-              echo "DOCKER_USERNAME is not set, will not be able to push image" >&2
+              echo "DOCKER_USERNAME is not set, will not be able to connect to Docker Hub" >&2
               exit 1
             fi
 
             if [[ -z "${DOCKER_PASSWORD}" ]]; then
-              echo "DOCKER_PASSWORD is not set, will not be able to push image" >&2
+              echo "DOCKER_PASSWORD is not set, will not be able to connect to Docker Hub" >&2
               exit 1
             fi
       - run: docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
@@ -152,10 +152,20 @@ jobs:
         description: Steps that will be executed after the sources checkout but before the Docker image build
         type: steps
         default: []
+      docker_login:
+        description: |
+          Login to Docker Hub before building the image.
+          Set this parameter to true if the Dockerfile pulls private images.
+        type: boolean
+        default: false
     steps:
       - set_image_name_env_vars
       - checkout
       - steps: << parameters.after_checkout >>
+      - when:
+          condition: << parameters.docker_login >>
+          steps:
+            - docker_hub_login
       - run:
           name: Build Docker image
           command: |
