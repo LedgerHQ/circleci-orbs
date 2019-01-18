@@ -108,10 +108,10 @@ aliases:
         base="master^1"
       fi
       echo "List of changed files :"
-      list_changed_files=$(git diff ${base}..HEAD --diff-filter=AMT --name-only "*\.json" | tee /dev/tty)
+      list_changed_files=$(git diff ${base}..HEAD --no-renames --diff-filter=AM --name-only "*\.json" | tee /dev/tty)
       echo "export list_changed_files='$list_changed_files'" >> $BASH_ENV
       echo "List of deleted files :"
-      list_deleted_files=$(git diff ${base}..HEAD --diff-filter=D --name-only "*\.json" | tee /dev/tty)
+      list_deleted_files=$(git diff ${base}..HEAD --no-renames --diff-filter=D --name-only "*\.json" | tee /dev/tty)
       echo "export list_deleted_files='$list_deleted_files'" >> $BASH_ENV
   - &upload_jobs_common_parameters
     chef_server_url:
