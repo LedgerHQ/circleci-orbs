@@ -158,6 +158,11 @@ jobs:
           Set this parameter to true if the Dockerfile pulls private images.
         type: boolean
         default: false
+      docker_build_args:
+        description: |
+          Set arguments to pass to the command "docker build" in addition to the commit SHA1 being added as a Docker tag.
+        type: string
+        default: ""
     steps:
       - set_image_name_env_vars
       - checkout
@@ -169,7 +174,7 @@ jobs:
       - run:
           name: Build Docker image
           command: |
-            docker_args="-t ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1}"
+            docker_args="-t ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} << parameters.docker_build_args >>"
             echo "Executing docker build with the following arguments :" ${docker_args}
             docker build ${docker_args} .
       - run:
