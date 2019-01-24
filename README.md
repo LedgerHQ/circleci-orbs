@@ -79,7 +79,7 @@ For reference, here is an explanation about the sandbox container use :
 
 ```sh
 knife acl add client circleci containers data create
-knife acl bulk add client circleci data ".*" delete,update
+knife acl bulk add client circleci data ".*" create,delete,update
 ```
 
 #### Permissions to update environments
