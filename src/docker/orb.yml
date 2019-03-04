@@ -84,15 +84,15 @@ aliases:
   - &wait_compose_healthy
     name: Wait for all service dependencies to become healthy
     command: |
-      for try in {1..10}; do
-        sleep 30
+      for try in {1..25}; do
+        sleep 5
         if [ "$(docker ps --filter 'name=ci_' --filter 'health=unhealthy' --filter 'health=starting' --format '{{.Names}}')" = "" ]; then
           docker-compose -f $docker_compose_config -p ci ps
           exit 0
         fi
-        docker-compose -f $docker_compose_config -p ci ps
-        echo
+        echo "Containers not ready yet, waiting..."
       done
+      docker-compose -f $docker_compose_config -p ci ps
       echo "Error : some service dependencies are not healthy at the end of the timeout" >&2
       exit 1
 
