@@ -46,8 +46,6 @@ examples:
                   MYSQL_USER=my_user
                   MYSQL_PASSWORD=my_password
                   MYSQL_DATABASE=my_db
-                # each goss run needs to start from a fresh docker-compose environment
-                docker_compose_single_use: true
                 dgoss_docker_env_vars: |-
                   APP_DB_HOST=mysql-server
                   APP_DB_USER=my_db
@@ -284,27 +282,27 @@ jobs:
             echo "export GOSS_FILES_PATH='$GOSS_FILES_PATH'" >> $BASH_ENV
             echo "export GOSS_SLEEP='<< parameters.goss_sleep >>'" >> $BASH_ENV
       - run:
-          name: Run goss validation
-          command: |
-            echo "Executing dgoss run with the following arguments :" $docker_opts
-            dgoss run $docker_opts ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1}
-      - when:
-          condition: << parameters.docker_compose_single_use >>
-          steps:
-            - run:
-                name: Reset docker-compose environment
-                command: |
-                  docker-compose -f $docker_compose_config -p ci down
-                  docker-compose -f $docker_compose_config -p ci up -d
-            - run: *wait_compose_healthy
-      - run:
-          name: Run goss validation again to extract the JUnit result
+          name: Run goss validation (JUnit result)
           command: |
             mkdir -p /tmp/goss-test-results/goss
             GOSS_OPTS="--format junit" dgoss run $docker_opts ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} 2>&1 | \
               sed -n '/^<[[:alpha:]/?]/p' > /tmp/goss-test-results/goss/results.xml
       - store_test_results:
           path: /tmp/goss-test-results
+      - run:
+          name: Reset docker-compose environment
+          when: on_fail
+          command: |
+            docker-compose -f $docker_compose_config -p ci down
+            docker-compose -f $docker_compose_config -p ci up -d
+      - run: *wait_compose_healthy
+          when: on_fail
+      - run:
+          name: Run goss validation again to get text output
+          when: on_fail
+          command: |
+            echo "Executing dgoss run with the following arguments :" $docker_opts
+            dgoss run $docker_opts ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1}
   publish_image:
     description: Publish docker image to the Docker Hub registry
     executor: machine-executor
