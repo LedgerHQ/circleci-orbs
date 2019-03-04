@@ -289,20 +289,20 @@ jobs:
               sed -n '/^<[[:alpha:]/?]/p' > /tmp/goss-test-results/goss/results.xml
       - store_test_results:
           path: /tmp/goss-test-results
-      - run:
-          name: Reset docker-compose environment
-          when: on_fail
-          command: |
-            docker-compose -f $docker_compose_config -p ci down
-            docker-compose -f $docker_compose_config -p ci up -d
-      - run: *wait_compose_healthy
-          when: on_fail
-      - run:
-          name: Run goss validation again to get text output
-          when: on_fail
-          command: |
-            echo "Executing dgoss run with the following arguments :" $docker_opts
-            dgoss run $docker_opts ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1}
+      - when:
+          condition: on_fail
+          steps:
+            - run:
+                name: Reset docker-compose environment
+                command: |
+                  docker-compose -f $docker_compose_config -p ci down
+                  docker-compose -f $docker_compose_config -p ci up -d
+            - run: *wait_compose_healthy
+            - run:
+                name: Run goss validation again to get text output
+                command: |
+                  echo "Executing dgoss run with the following arguments :" $docker_opts
+                  dgoss run $docker_opts ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1}
   publish_image:
     description: Publish docker image to the Docker Hub registry
     executor: machine-executor
