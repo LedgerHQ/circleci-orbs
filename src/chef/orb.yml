@@ -134,7 +134,14 @@ aliases:
     when:
       condition: <<parameters.slack_notification>>
       steps:
-        - slack/status
+        - slack/status:
+            success_message: |
+              :tada: A $CIRCLE_JOB job has succeeded! $SLACK_MENTIONS
+              Job triggered by : $CIRCLE_USERNAME
+            failure_message: |
+              :red_circle: A $CIRCLE_JOB job has failed! $SLACK_MENTIONS
+              Job triggered by : $CIRCLE_USERNAME
+            include_job_number_field: false
 
 commands:
   install_chef_workstation:
