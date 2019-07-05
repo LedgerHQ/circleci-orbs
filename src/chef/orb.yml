@@ -137,6 +137,7 @@ aliases:
       if [ -n "${pull_request}" ]; then
         echo "export pull_request='https://github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/pull/${pull_request}'" >> $BASH_ENV
       fi
+    when: always
   - &publish_slack_status
     when:
       condition: <<parameters.slack_notification>>
