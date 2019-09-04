@@ -190,12 +190,17 @@ jobs:
   check_cookbook_version:
     description: Check that the cookbook version has been upgraded
     machine: true
+    parameters:
+      base_branch:
+        description: Base comparison off this branch
+        type: string
+        default: origin/master
     steps:
       - checkout
       - run:
           name: Check that the cookbook version has been upgraded
           command: |
-            base="origin/master"
+            base="<< parameters.base_branch >>"
             if [ "${CIRCLE_BRANCH}" = "master" ]; then
               base="master^1"
             fi
