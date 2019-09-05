@@ -201,8 +201,8 @@ jobs:
           name: Check that the cookbook version has been upgraded
           command: |
             base="<< parameters.base_branch >>"
-            if [ "${CIRCLE_BRANCH}" = "master" ]; then
-              base="master^1"
+            if [ "origin/${CIRCLE_BRANCH}" = "${base}" ]; then
+              base="${base}^1"
             fi
 
             semver="[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)*"
