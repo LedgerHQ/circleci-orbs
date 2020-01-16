@@ -93,7 +93,7 @@ aliases:
     name: Test Kitchen
     # The --no-color option is not entirely respected for now
     # https://github.com/inspec/kitchen-inspec/issues/103
-    command: kitchen test --destroy=never --no-color '<< parameters.test_kitchen_instance >>'
+    command: kitchen test --no-color '<< parameters.test_kitchen_instance >>'
   - &setup_knife
     name: Setup Knife
     command: |
