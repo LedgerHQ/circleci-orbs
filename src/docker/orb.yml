@@ -115,7 +115,8 @@ commands:
             DOCKER_NAMESPACE="${DOCKER_NAMESPACE:-${CIRCLE_USERNAME}}"
             # Docker repository name must be lowercase
             eval echo 'export DOCKER_NAMESPACE="${DOCKER_NAMESPACE,,}"' >> $BASH_ENV
-            eval echo 'export PROJECT_NAME="$(echo $CIRCLE_PROJECT_REPONAME | sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
+            PROJECT_NAME="${DOCKER_PROJECT_NAME:-${CIRCLE_PROJECT_REPONAME}}"
+            eval echo 'export PROJECT_NAME="$(echo ${PROJECT_NAME}| sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
   docker_hub_login:
     description: Login to the Docker Hub registry
     steps:

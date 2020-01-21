@@ -110,6 +110,7 @@ To be able to publish to the Docker Hub registry, you have to define the followi
 - DOCKER_USERNAME
 - DOCKER_PASSWORD
 - DOCKER_ORGANIZATION if the repository is managed by a Github organization
+- DOCKER_PROJECT_NAME if the repository on DockerHub don't match the Github one
 
 **BEWARE OF PUBLIC REPOSITORIES** : if you allow CircleCI to run builds from forked pull request, you must take care of not sharing these environment variables to forked pull request as this will allow anyone to retrieve your Docker Hub credentials. Check that the settings *Pass secrets to builds from forked pull requests* is disabled.
 
