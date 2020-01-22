@@ -164,6 +164,11 @@ jobs:
           Set arguments to pass to the command "docker build" in addition to the commit SHA1 being added as a Docker tag.
         type: string
         default: ""
+      docker_build_target:
+        description: |
+          Set the directory to target with the command "docker build", i.e. the folder containing the Dockerfile.
+        type: string
+        default: "."
     steps:
       - set_image_name_env_vars
       - checkout
@@ -177,7 +182,7 @@ jobs:
           command: |
             docker_args="-t ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} << parameters.docker_build_args >>"
             echo "Executing docker build with the following arguments :" ${docker_args}
-            docker build ${docker_args} .
+            docker build ${docker_args} << parameters.docker_build_target >>
       - run:
           name: Create workspace
           command: mkdir -pv ~/workspace
