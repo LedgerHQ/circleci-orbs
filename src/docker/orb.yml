@@ -105,6 +105,11 @@ executors:
 commands:
   set_image_name_env_vars:
     description: Set environment variables used to name the docker image
+    parameters:
+      docker_project_name:
+        description:
+          Name of the project to build
+        type: string
     steps:
       - run:
           name: Write environment variables to $BASH_ENV
@@ -115,7 +120,11 @@ commands:
             DOCKER_NAMESPACE="${DOCKER_NAMESPACE:-${CIRCLE_USERNAME}}"
             # Docker repository name must be lowercase
             eval echo 'export DOCKER_NAMESPACE="${DOCKER_NAMESPACE,,}"' >> $BASH_ENV
-            PROJECT_NAME="${DOCKER_PROJECT_NAME:-${CIRCLE_PROJECT_REPONAME}}"
+            if [ -z "<< parameters.docker_project_name >>" ]; then
+              PROJECT_NAME="${DOCKER_PROJECT_NAME:-${CIRCLE_PROJECT_REPONAME}}"
+            else
+              PROJECT_NAME="<< parameters.docker_project_name >>"
+            fi
             eval echo 'export PROJECT_NAME="$(echo ${PROJECT_NAME}| sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
   docker_hub_login:
     description: Login to the Docker Hub registry
@@ -169,8 +178,13 @@ jobs:
           Set the directory to target with the command "docker build", i.e. the folder containing the Dockerfile.
         type: string
         default: "."
+      docker_project_name:
+        description:
+          Name of the project to build
+        type: string
     steps:
-      - set_image_name_env_vars
+      - set_image_name_env_vars:
+          docker_project_name: << parameters.docker_project_name >>
       - checkout
       - steps: << parameters.after_checkout >>
       - when:
@@ -230,8 +244,13 @@ jobs:
         description: Time to sleep after running container (and optionally goss_wait.yaml) and before running tests
         type: string
         default: 1s
+      docker_project_name:
+        description:
+          Name of the project to build
+        type: string
     steps:
-      - set_image_name_env_vars
+      - set_image_name_env_vars:
+          docker_project_name: << parameters.docker_project_name >>
       - load_image
       - checkout
       - when:
@@ -314,8 +333,14 @@ jobs:
   publish_image:
     description: Publish docker image to the Docker Hub registry
     executor: machine-executor
+    parameters:
+      docker_project_name:
+        description:
+          Name of the project to build
+        type: string
     steps:
-      - set_image_name_env_vars
+      - set_image_name_env_vars:
+          docker_project_name: << parameters.docker_project_name >>
       - load_image
       - run:
           name: Add Docker tag on the image
