@@ -196,6 +196,7 @@ jobs:
       - run:
           name: Build Docker image
           command: |
+            echo ".git" >> << parameters.docker_build_target >>/.dockerignore
             docker_args="-t ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} << parameters.docker_build_args >>"
             echo "Executing docker build with the following arguments :" ${docker_args}
             docker build ${docker_args} << parameters.docker_build_target >>
