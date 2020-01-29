@@ -238,7 +238,7 @@ jobs:
       goss_version:
         description: goss version to install
         type: string
-        default: v0.3.6
+        default: v0.3.9
       dgoss_docker_env_vars:
         description: Environment variables that dgoss should provide to the container
         type: string
