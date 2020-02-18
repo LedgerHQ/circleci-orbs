@@ -21,16 +21,12 @@ examples:
             - chef/cookstyle:
                 requires:
                   - chef/check_cookbook_version
-            - chef/foodcritic:
-                requires:
-                  - chef/check_cookbook_version
             - chef/kitchen:
                 test_kitchen_instance: all
                 junit_output: /tmp/test-kitchen-results/
                 requires:
                   - chef/validate_json
                   - chef/cookstyle
-                  - chef/foodcritic
 
   test_kitchen_with_external_databags:
     description: Get an external databag from a VCS & run Test Kitchen
@@ -272,13 +268,6 @@ jobs:
     steps:
       - checkout
       - run: cookstyle
-  foodcritic:
-    description: Execute Foodcritic linter
-    docker:
-      - image: chef/chefdk
-    steps:
-      - checkout
-      - run: foodcritic .
   kitchen:
     description: Execute Test Kitchen
     # Dokken Kitchen driver doesn't work when launched from a Docker container

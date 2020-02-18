@@ -9,8 +9,7 @@ This orb implements the following actions for a Chef cookbook :
 - it validates that all files pertaining to a cookbook are correct :
   - it checks that the cookbook version is valid and has been increased. See the [note about the cookbook version](#note-about-the-cookbook-version).
   - it checks that all JSON files are valid.
-  - it checks the Ruby syntax with Rubocop or Cookstyle.
-  - it checks the Chef syntax with Foodcritic.
+  - it checks the Ruby & Chef syntax with Cookstyle.
 - it tests the cookbook by running it with Kitchen.
 - it uploads the cookbook on a Chef Server with Berkshelf. To use that job, [a Chef client must first be created and be allowed to upload cookbooks](#setup-of-a-Chef-client-allowed-to-upload-data-to-a-chef-server). The job takes care to exclude [fixture cookbooks defined inside a group named "integration"](https://kitchen.ci/docs/reference/fixtures/). Additionally the status of the upload job can optionally be published on Slack by using [CircleCI's orb](https://circleci.com/orbs/registry/orb/circleci/slack).
 
