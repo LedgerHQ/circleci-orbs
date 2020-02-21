@@ -333,6 +333,17 @@ jobs:
       - run: *setup_knife
       - run: *list_file_changes
       - run:
+          name: Delete removed data bags
+          command: |
+            for file in $list_deleted_files; do
+              databag=$(basename $(dirname $file))
+              item=$(basename -s ".json" $file)
+              knife data bag delete -y $databag $item
+              if [ -z "$(knife data bag show $databag)" ]; then
+                knife data bag delete -y $databag
+              fi
+            done
+      - run:
           name: Upload new or changed data bags
           command: |
             for file in $list_changed_files; do
@@ -343,17 +354,6 @@ jobs:
                 declare databag_${databag/-/_}_exists=1
               fi
               knife data bag from file $databag $file
-            done
-      - run:
-          name: Delete removed data bags
-          command: |
-            for file in $list_deleted_files; do
-              databag=$(basename $(dirname $file))
-              item=$(basename -s ".json" $file)
-              knife data bag delete -y $databag $item
-              if [ -z "$(knife data bag show $databag)" ]; then
-                knife data bag delete -y $databag
-              fi
             done
       - run: *parse_pr_number
       - *publish_slack_status
