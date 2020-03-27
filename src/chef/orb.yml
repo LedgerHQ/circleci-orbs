@@ -185,7 +185,8 @@ commands:
 jobs:
   check_cookbook_version:
     description: Check that the cookbook version has been upgraded
-    machine: true
+    machine:
+      image: ubuntu-1604:201903-01
     parameters:
       base_branch:
         description: Base comparison off this branch
@@ -219,7 +220,8 @@ jobs:
             echo "Cookbook version upgrade : ${oldver} -> ${newver}"
   check_serial:
     description: Check that the serial has been increased
-    machine: true
+    machine:
+      image: ubuntu-1604:201903-01
     steps:
       - checkout
       - run:
@@ -248,7 +250,8 @@ jobs:
             echo "Serial update : ${oldser} -> ${newser}"
   validate_json:
     description: Validate JSON files
-    machine: true
+    machine:
+      image: ubuntu-1604:201903-01
     steps:
       - checkout
       - run:
@@ -272,7 +275,8 @@ jobs:
     description: Execute Test Kitchen
     # Dokken Kitchen driver doesn't work when launched from a Docker container
     # https://github.com/someara/kitchen-dokken/issues/160#issuecomment-423829306
-    machine: true
+    machine:
+      image: ubuntu-1604:201903-01
     parameters:
       test_kitchen_instance:
         description: Run Test Kitchen on this instance or set of instances in case of a regexp
