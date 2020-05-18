@@ -1,0 +1,100 @@
+version: 2.1
+
+description: Check and push new versions of services and packages
+
+examples:
+  check_and_publish:
+    description: |
+      A standard versioning workflow, where you checking that the version is updated
+      and pushing/tagging a new version.
+    usage:
+      version: 2.1
+
+      orbs:
+        docker: ledger/versioning@volatile
+
+      workflows:
+        check_and_publish:
+          jobs:
+            - versioning/check
+            - versioning/publish:
+                requires:
+                  - versioning/check_version
+
+commands:
+  set_version_command:
+    description: Set an env var with the command to run to get the version
+    steps:
+      - run:
+          name: Write environment variables to $BASH_ENV
+          command: |
+            if [[ -f "setup.py" ]]; then
+              is_python_package=1
+              version_command="python setup.py --version"
+            else
+              is_python_package=0
+              version_command="cat VERSION"
+            fi
+            echo "export IS_PYTHON_PACKAGE=\"$(is_python_package)\"" >> $BASH_ENV
+            echo "export VERSION_COMMAND=\"$(version_command)\"" >> $BASH_ENV
+  set_new_commit_and_version_env_vars:
+    description: Set the new version and commit in environment variables
+    steps:
+      - run:
+          name: Write environment variables to $BASH_ENV
+          command: |
+            new_commit=$(git rev-parse HEAD)
+            echo "export NEW_COMMIT=\"$(new_commit)\"" >> $BASH_ENV
+            new_version=$($(VERSION_COMMAND))
+            echo "export NEW_VERSION=\"$(new_version)\"" >> $BASH_ENV
+  set_old_commit_and_version_env_vars:
+    description: Set the new version and commit in environment variables
+    steps:
+      - run:
+          name: Write environment variables to $BASH_ENV
+          command: |
+            current_commit=$(git rev-parse HEAD)
+            git reset origin/master --hard
+            old_commit=$(git rev-parse HEAD)
+            echo "export OLD_COMMIT=\"$(old_commit)\"" >> $BASH_ENV
+            old_version=$($(VERSION_COMMAND))
+            echo "export OLD_VERSION=\"$(old_version)\"" >> $BASH_ENV
+            git reset ${current_commit} --hard
+
+jobs:
+  check_version:
+    description: Check that the version has changed
+    docker:
+      - image: circleci/python:3.8
+    steps:
+      - checkout
+      - set_version_command
+      - set_new_commit_and_version_env_vars
+      - set_old_commit_and_version_env_vars
+      - run:
+          name: Check version
+          command: |
+            pipenv run python -c "from packaging import version; assert ('${NEW_COMMIT}' == '${OLD_COMMIT}') or (version.parse('${NEW_VERSION}') > version.parse('${OLD_VERSION}'))"
+  publish_version:
+    description: Publish new version
+    docker:
+      - image: circleci/python:3.8
+    steps:
+      - checkout
+      - set_version_command
+      - set_new_commit_and_version_env_vars
+      - run:
+          name: Push new dist to gemfury
+          command: |
+            if [[ "${IS_PYTHON_PACKAGE}" == "1" ]]; then
+              python setup.py sdist
+              curl --fail -F package=@dist/python-ledgercommon-${NEW_VERSION}.tar.gz https://${PYPI_PUSH_TOKEN}@push.fury.io/ledger/
+            else
+              echo "Not a python package, nothing to publish"
+            fi
+      - run:
+          name: Tag repository
+          command: |
+            tag="${NEW_VERSION}"
+            git tag ${tag}
+            git push origin --tags
