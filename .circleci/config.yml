@@ -81,7 +81,7 @@ jobs:
               orb_name=$(echo $orb_path | awk -F '/' '{ print $(NF-1) }')
               if ! $(circleci orb list ledger | grep -qw $orb_name); then
                 echo "Creating new orb on CircleCI registry : ${orb_name}"
-                if ! circleci --token $CIRCLECI_API_TOKEN orb create ledger/${orb_name} 2>/tmp/circleci_cli.err; then
+                if ! circleci --token $CIRCLECI_API_TOKEN orb create --no-prompt ledger/${orb_name} 2>/tmp/circleci_cli.err; then
                   cat /tmp/circleci_cli.err
                   if ! grep -q "an Orb with that name already exists" /tmp/circleci_cli.err; then
                     echo "Failed to create orb : ${orb_name}"
