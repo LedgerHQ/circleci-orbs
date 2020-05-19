@@ -1,0 +1,155 @@
+version: 2.1
+
+description: Check and push new versions of services and packages
+
+examples:
+  check_and_publish_python_package:
+    description: |
+      Check version of a python package and publish a new version of it.
+      The version update is checked on each PR against master and merges
+      on master are pushed to gemfury.
+    usage:
+      version: 2.1
+
+      orbs:
+        docker: ledger/versioning@volatile
+
+      workflows:
+        check_and_publish_python_package:
+          jobs:
+            - versioning/check
+            - versioning/publish_package:
+                context: pypi
+                requires:
+                  - versioning/check
+                filters:
+                  branches:
+                    only:
+                      - develop
+                      - master
+                  tags:
+                    ignore: /.*/
+            - versioning/tag:
+                requires:
+                  - versioning/publish_package
+                filters:
+                  branches:
+                    only:
+                      - develop
+                      - master
+                  tags:
+                    ignore: /.*/
+  check_and_publish_service_with_docker:
+    description: |
+      Check version of a dockerized service and publish a new version of it.
+
+    usage:
+      version: 2.1
+
+      orbs:
+        docker: ledger/versioning@volatile
+
+      workflows:
+        check_and_publish_service_with_docker:
+          jobs:
+            - versioning/check
+            - docker/publish_image:
+                context: dockerhub
+                requires:
+                  - versioning/check
+                filters:
+                  branches:
+                    only:
+                      - develop
+                      - master
+                  tags:
+                    only: /.*/
+            - versioning/tag:
+                requires:
+                  - docker/publish_image
+                filters:
+                  branches:
+                    only:
+                      - master
+                  tags:
+                    ignore: /.*/
+
+commands:
+  set_version_command:
+    description: Set an env var with the command to run to get the version
+    steps:
+      - run:
+          name: Write environment variables to $BASH_ENV
+          command: |
+            package_type=""
+            if [[ -f "setup.py" ]]; then
+              package_type="PYTHON"
+              version_command="python setup.py --version"
+            elif [[ -f "VERSION" ]]; then
+              version_command="cat VERSION"
+            else
+              version_command="git describe --always --tag"
+            fi
+            echo "export PACKAGE_TYPE=\"${package_type}\"" >> $BASH_ENV
+            echo "export VERSION_COMMAND=\"${version_command}\"" >> $BASH_ENV
+  set_new_version_env_var:
+    description: Set the new version in environment variables
+    steps:
+      - set_version_command
+      - run:
+          name: Write environment variables to $BASH_ENV
+          command: |
+            source $BASH_ENV
+            new_version=$(${VERSION_COMMAND})
+            echo "export NEW_VERSION=\"${new_version}\"" >> $BASH_ENV
+
+jobs:
+  check:
+    description: Check that the version is valid
+    docker:
+      - image: circleci/python:3.8
+    steps:
+      - checkout
+      - set_new_version_env_var
+      - run:
+          name: Check version changed
+          command: |
+            # We were checking that the new version was always > than the one on master
+            # but this check does not work with hotfixes of older versions. Instead
+            # we now simply check that the target version does not exist in tags.
+            echo "Checking that tag ${NEW_VERSION} does not already exist."
+            git fetch --tags
+            # We try to tag, which will fail the step if the tag already exists.
+            git tag ${NEW_VERSION}
+            git tag -d ${NEW_VERSION}
+
+  publish_package:
+    description: Publish new version of package
+    docker:
+      - image: circleci/python:3.8
+    steps:
+      - checkout
+      - set_new_version_env_var
+      - run:
+          name: Push new dist to gemfury
+          command: |
+            if [[ "${PACKAGE_TYPE}" == "PYTHON" ]]; then
+              python setup.py sdist
+              package_name="$(python setup.py --name)"
+              curl --fail -F package=@dist/${package_name}-${NEW_VERSION}.tar.gz https://${PYPI_PUSH_TOKEN}@push.fury.io/ledger/
+            else
+              echo "Unknown package type, nothing to publish."
+              exit 1
+            fi
+  tag:
+    description: Add github tag
+    docker:
+      - image: circleci/python:3.8
+    steps:
+      - checkout
+      - set_new_version_env_var
+      - run:
+          name: Tag github repository
+          command: |
+            git tag ${NEW_VERSION}
+            git push origin --tags
