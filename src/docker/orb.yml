@@ -185,8 +185,8 @@ commands:
               exit 1
             fi
             echo "export DOCKER_TAG=\"${docker_tag}\"" >> $BASH_ENV
-  docker_hub_login:
-    description: Login to the Docker Hub registry
+  docker_login:
+    description: Login to the Docker registry
     steps:
       - run:
           name: Check environment variables existence
@@ -262,7 +262,7 @@ jobs:
       - when:
           condition: << parameters.docker_login >>
           steps:
-            - docker_hub_login
+            - docker_login
       - run:
           name: Build Docker image
           command: |
@@ -368,7 +368,7 @@ jobs:
       - when:
           condition: << parameters.docker_compose_configuration >>
           steps:
-            - docker_hub_login
+            - docker_login
             - run:
                 name: Setup docker-compose environment powering service dependencies
                 command: |
@@ -431,5 +431,5 @@ jobs:
             image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
           fi
           docker tag ${image_name}:${CIRCLE_SHA1} ${DOCKER_TAG}
-      - docker_hub_login
+      - docker_login
       - run: docker push ${DOCKER_TAG}
