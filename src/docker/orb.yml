@@ -80,6 +80,36 @@ examples:
                         - my-repository-{{ .Branch }}-
                         - my-repository
 
+  publish_to_a_second_registry:
+    description: |
+      A standard docker workflow, where you are building an image with a
+      Dockerfile in the root of your repository, naming the image to be the
+      same name as your repository, validating the image setup with the goss tool
+      and then pushing it to the Docker registry
+    usage:
+      version: 2.1
+
+      orbs:
+        docker: ledger/docker@volatile
+
+      workflows:
+        build_test_and_publish:
+          jobs:
+            - docker/build_image
+            - docker/test_image:
+                context: dockerhub
+                requires:
+                  - docker/build_image
+            - docker/publish_image:
+                context: dockerhub
+                requires:
+                  - docker/test_image
+            - docker/publish_image:
+                context: dockerharbor
+                docker_source_namespace: ledgerhq
+                requires:
+                  - docker/test_image
+
 aliases:
   - &wait_compose_healthy
     name: Wait for all service dependencies to become healthy
@@ -127,8 +157,36 @@ commands:
               PROJECT_NAME="<< parameters.docker_project_name >>"
             fi
             eval echo 'export PROJECT_NAME="$(echo ${PROJECT_NAME}| sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
-  docker_hub_login:
-    description: Login to the Docker Hub registry
+            image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
+            if [ -n "${DOCKER_SERVER}" ]; then
+              image_name="${DOCKER_SERVER}/${image_name}"
+            fi
+            echo "export DOCKER_IMAGE_NAME=\"${image_name}\"" >> $BASH_ENV
+  set_docker_tag_env_var:
+    description: Set environment variable of the docker tag to push
+    steps:
+      - run:
+          name: Write environment variables to $BASH_ENV
+          command: |
+            if [ -n "${CIRCLE_BRANCH}" -a -z "${CIRCLE_TAG}" ]; then
+              if [ "${CIRCLE_BRANCH}" = "master" ]; then
+                docker_tag="${DOCKER_IMAGE_NAME}:latest"
+              else
+                BRANCH=$(echo $CIRCLE_BRANCH | sed 's/[^[:alnum:]_.-]/_/g')
+                docker_tag="${DOCKER_IMAGE_NAME}:${BRANCH}"
+              fi
+            elif [ -n "${CIRCLE_TAG}" -a -z "${CIRCLE_BRANCH}" ]; then
+              TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
+              docker_tag="${DOCKER_IMAGE_NAME}:${TAG}"
+            else
+              echo "Unexpected condition state :" >&2
+              echo "The build should be either commit-triggered or tag-triggered" >&2
+              echo "So CircleCI should provide either the BRANCH or the TAG environment variable" >&2
+              exit 1
+            fi
+            echo "export DOCKER_TAG=\"${docker_tag}\"" >> $BASH_ENV
+  docker_login:
+    description: Login to the Docker registry
     steps:
       - run:
           name: Check environment variables existence
@@ -142,17 +200,29 @@ commands:
               echo "DOCKER_PASSWORD is not set, will not be able to connect to Docker Hub" >&2
               exit 1
             fi
-      - run: docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+      - run: docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD} ${DOCKER_SERVER:-}
   load_image:
     description: |
       Loads the docker image that has been built from the workspace
+    parameters:
+      docker_source_namespace:
+        description:
+          Override the docker tag used to push
+        type: string
+        default: ""
     steps:
       - attach_workspace:
           at: ~/workspace
       - run: docker load -i ~/workspace/docker_image.tar
       - run:
           name: Check docker image existence
-          command: docker inspect ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} &> /dev/null
+          command: |
+            if [ -n "<< parameters.docker_source_namespace >>" ]; then
+              image_name="<< parameters.docker_source_namespace >>/${PROJECT_NAME}"
+            else
+              image_name="${DOCKER_IMAGE_NAME}"
+            fi
+            docker inspect ${image_name}:${CIRCLE_SHA1} &> /dev/null
 
 jobs:
   build_image:
@@ -192,7 +262,7 @@ jobs:
       - when:
           condition: << parameters.docker_login >>
           steps:
-            - docker_hub_login
+            - docker_login
       - run:
           name: Build Docker image
           command: |
@@ -298,7 +368,7 @@ jobs:
       - when:
           condition: << parameters.docker_compose_configuration >>
           steps:
-            - docker_hub_login
+            - docker_login
             - run:
                 name: Setup docker-compose environment powering service dependencies
                 command: |
@@ -343,30 +413,23 @@ jobs:
           Name of the project to build
         type: string
         default: ""
+      docker_source_namespace:
+        description:
+          Override the docker tag used to push
+        type: string
+        default: ""
     steps:
       - set_image_name_env_vars:
           docker_project_name: << parameters.docker_project_name >>
-      - load_image
-      - run:
-          name: Add Docker tag on the image
-          command: |
-            if [ -n "${CIRCLE_BRANCH}" -a -z "${CIRCLE_TAG}" ]; then
-              if [ "${CIRCLE_BRANCH}" = "master" ]; then
-                docker_tag="${DOCKER_NAMESPACE}/${PROJECT_NAME}:latest"
-              else
-                BRANCH=$(echo $CIRCLE_BRANCH | sed 's/[^[:alnum:]_.-]/_/g')
-                docker_tag="${DOCKER_NAMESPACE}/${PROJECT_NAME}:${BRANCH}"
-              fi
-            elif [ -n "${CIRCLE_TAG}" -a -z "${CIRCLE_BRANCH}" ]; then
-              TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
-              docker_tag="${DOCKER_NAMESPACE}/${PROJECT_NAME}:${TAG}"
-            else
-              echo "Unexpected condition state :" >&2
-              echo "The build should be either commit-triggered or tag-triggered" >&2
-              echo "So CircleCI should provide either the BRANCH or the TAG environment variable" >&2
-              exit 1
-            fi
-            echo "Adding the following tag on the Docker image : ${docker_tag}"
-            docker tag ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} ${docker_tag}
-      - docker_hub_login
-      - run: docker push ${DOCKER_NAMESPACE}/${PROJECT_NAME}
+      - set_docker_tag_env_var
+      - load_image:
+          docker_source_namespace: << parameters.docker_source_namespace >>
+      - run: |
+          if [ -n "<< parameters.docker_source_namespace >>" ]; then
+            image_name="<< parameters.docker_source_namespace >>/${PROJECT_NAME}"
+          else
+            image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
+          fi
+          docker tag ${image_name}:${CIRCLE_SHA1} ${DOCKER_TAG}
+      - docker_login
+      - run: docker push ${DOCKER_TAG}
