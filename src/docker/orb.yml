@@ -157,24 +157,27 @@ commands:
               PROJECT_NAME="<< parameters.docker_project_name >>"
             fi
             eval echo 'export PROJECT_NAME="$(echo ${PROJECT_NAME}| sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
+            image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
+            if [ -n "${DOCKER_SERVER}" ]; then
+              image_name="${DOCKER_SERVER}/${image_name}"
+            fi
+            echo "export DOCKER_IMAGE_NAME=\"${image_name}\"" >> $BASH_ENV
   set_docker_tag_env_var:
     description: Set environment variable of the docker tag to push
     steps:
       - run:
           name: Write environment variables to $BASH_ENV
           command: |
-            image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
-
             if [ -n "${CIRCLE_BRANCH}" -a -z "${CIRCLE_TAG}" ]; then
               if [ "${CIRCLE_BRANCH}" = "master" ]; then
-                docker_tag="${image_name}:latest"
+                docker_tag="${DOCKER_IMAGE_NAME}:latest"
               else
                 BRANCH=$(echo $CIRCLE_BRANCH | sed 's/[^[:alnum:]_.-]/_/g')
-                docker_tag="${image_name}:${BRANCH}"
+                docker_tag="${DOCKER_IMAGE_NAME}:${BRANCH}"
               fi
             elif [ -n "${CIRCLE_TAG}" -a -z "${CIRCLE_BRANCH}" ]; then
               TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
-              docker_tag="${image_name}:${TAG}"
+              docker_tag="${DOCKER_IMAGE_NAME}:${TAG}"
             else
               echo "Unexpected condition state :" >&2
               echo "The build should be either commit-triggered or tag-triggered" >&2
@@ -217,7 +220,7 @@ commands:
             if [ -n "<< parameters.docker_source_namespace >>" ]; then
               image_name="<< parameters.docker_source_namespace >>/${PROJECT_NAME}"
             else
-              image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
+              image_name="${DOCKER_IMAGE_NAME}"
             fi
             docker inspect ${image_name}:${CIRCLE_SHA1} &> /dev/null
 
