@@ -103,6 +103,34 @@ commands:
             new_version=$(${VERSION_COMMAND})
             echo "export NEW_VERSION=\"${new_version}\"" >> $BASH_ENV
 
+  build_and_publish_command:
+    description: Build distribution, and push to gemfury
+    parameters:
+      dist_format:
+        type: string
+        default: "sdist"  # can be "sdist" or "bdist_wheel"
+    steps:
+      - set_new_version_env_var
+      - run:
+          name: Push new dist to gemfury
+          command: |
+            if [[ "${PACKAGE_TYPE}" == "PYTHON" ]]; then
+              package_name="$(python setup.py --name)"
+
+              if [[ "<< parameters.dist_format >>" == "bdist_wheel" ]]; then
+                dist_file="${package_name}-${NEW_VERSION}*.whl"
+                pip install wheel
+              else
+                dist_file="${package_name}-${NEW_VERSION}.tar.gz"
+              fi
+
+              python setup.py << parameters.dist_format >>
+              curl --fail -F package=@dist/${dist_file} https://${PYPI_PUSH_TOKEN}@push.fury.io/ledger/
+            else
+              echo "Unknown package type, nothing to publish."
+              exit 1
+            fi
+
 jobs:
   check:
     description: Check that the version is valid
@@ -129,18 +157,8 @@ jobs:
       - image: circleci/python:3.8
     steps:
       - checkout
-      - set_new_version_env_var
-      - run:
-          name: Push new dist to gemfury
-          command: |
-            if [[ "${PACKAGE_TYPE}" == "PYTHON" ]]; then
-              python setup.py sdist
-              package_name="$(python setup.py --name)"
-              curl --fail -F package=@dist/${package_name}-${NEW_VERSION}.tar.gz https://${PYPI_PUSH_TOKEN}@push.fury.io/ledger/
-            else
-              echo "Unknown package type, nothing to publish."
-              exit 1
-            fi
+      - build_and_publish_command
+
   tag:
     description: Add github tag
     docker:
