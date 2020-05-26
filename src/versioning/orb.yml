@@ -118,13 +118,14 @@ commands:
               package_name="$(python setup.py --name)"
 
               if [[ "<< parameters.dist_format >>" == "bdist_wheel" ]]; then
-                dist_file=$(find dist -type f -name "${package_name}-${NEW_VERSION}*.whl")
                 pip install wheel
+                python setup.py << parameters.dist_format >>
+                dist_file=$(find dist -type f -name "${package_name}-${NEW_VERSION}*.whl")
               else
+                python setup.py << parameters.dist_format >>
                 dist_file="dist/${package_name}-${NEW_VERSION}.tar.gz"
               fi
 
-              python setup.py << parameters.dist_format >>
               curl --fail -F package=@${dist_file} https://${PYPI_PUSH_TOKEN}@push.fury.io/ledger/
             else
               echo "Unknown package type, nothing to publish."
