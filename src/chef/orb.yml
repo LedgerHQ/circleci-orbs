@@ -264,7 +264,7 @@ jobs:
   cookstyle:
     description: Execute Cookstyle analyzer
     docker:
-      - image: chef/chefdk
+      - image: chef/workstation:0.15.20
     steps:
       - checkout
       - run: cookstyle
