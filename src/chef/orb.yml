@@ -129,7 +129,7 @@ aliases:
   - &parse_pr_number
     name: Get the pull request number from the commit message
     command: |
-      pull_request=$(git show -s --format="%B" HEAD | sed -nr 's/^.*#([[:digit:]]+)[^#]*$/\1/p')
+      pull_request=$(git show -s --format="%B" HEAD | sed -nr '1 s/^.*#([[:digit:]]+)[^#]*$/\1/p')
       if [ -n "${pull_request}" ]; then
         echo "export pull_request='https://github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/pull/${pull_request}'" >> $BASH_ENV
       fi
