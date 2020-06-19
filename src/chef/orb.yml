@@ -161,9 +161,10 @@ commands:
               sudo apt-get update
               sudo apt-get install -y software-properties-common
             fi
-            sudo add-apt-repository "https://packages.chef.io/repos/apt/stable"
+            echo "Installing Chef repository for Ubuntu Xenial as there is no recent version of Workstation included within the Trusty repository"
+            sudo add-apt-repository "deb https://packages.chef.io/repos/apt/current xenial main"
       - run: sudo apt-get update
-      - run: sudo apt-get install -y chef-workstation
+      - run: sudo apt-get install -y chef-workstation && chef --version
       - run: echo 'eval "$(chef shell-init bash)"' >> $BASH_ENV
   get_data_bags:
     description: Retrieve data bags needed by the cookbook
@@ -257,14 +258,14 @@ jobs:
   rubocop:
     description: Execute Rubocop analyzer
     docker:
-      - image: chef/chefdk
+      - image: chef/chefworkstation
     steps:
       - checkout
       - run: rubocop
   cookstyle:
     description: Execute Cookstyle analyzer
     docker:
-      - image: chef/chefdk
+      - image: chef/chefworkstation
     steps:
       - checkout
       - run: cookstyle
@@ -314,7 +315,7 @@ jobs:
   berks_upload:
     description: Use Berkshelf to upload the cookbook on a Chef Server
     docker:
-      - image: chef/chefdk
+      - image: chef/chefworkstation
     parameters: *upload_jobs_common_parameters
     steps:
       - checkout
@@ -326,7 +327,7 @@ jobs:
   knife_databag_upload:
     description: Use Knife to sync databags with the Chef Server
     docker:
-      - image: chef/chefdk
+      - image: chef/chefworkstation
     parameters: *upload_jobs_common_parameters
     steps:
       - checkout
@@ -360,7 +361,7 @@ jobs:
   knife_environment_upload:
     description: Use Knife to sync environments with the Chef Server
     docker:
-      - image: chef/chefdk
+      - image: chef/chefworkstation
     parameters: *upload_jobs_common_parameters
     steps:
       - checkout
@@ -384,7 +385,7 @@ jobs:
   knife_role_upload:
     description: Use Knife to sync roles with the Chef Server
     docker:
-      - image: chef/chefdk
+      - image: chef/chefworkstation
     parameters: *upload_jobs_common_parameters
     steps:
       - checkout
