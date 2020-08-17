@@ -158,10 +158,12 @@ commands:
             fi
             eval echo 'export PROJECT_NAME="$(echo ${PROJECT_NAME}| sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
             image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
+            local_name=${image_name}
             if [ -n "${DOCKER_SERVER}" ]; then
               image_name="${DOCKER_SERVER}/${image_name}"
             fi
             echo "export DOCKER_IMAGE_NAME=\"${image_name}\"" >> $BASH_ENV
+            echo "export DOCKER_LOCAL_NAME=\"${local_name}\"" >> $BASH_ENV
   set_docker_tag_env_var:
     description: Set environment variable of the docker tag to push
     steps:
@@ -220,7 +222,7 @@ commands:
             if [ -n "<< parameters.docker_source_namespace >>" ]; then
               image_name="<< parameters.docker_source_namespace >>/${PROJECT_NAME}"
             else
-              image_name="${DOCKER_IMAGE_NAME}"
+              image_name="${DOCKER_LOCAL_NAME}"
             fi
             docker inspect ${image_name}:${CIRCLE_SHA1} &> /dev/null
 
@@ -275,7 +277,7 @@ jobs:
           command: mkdir -pv ~/workspace
       - run:
           name: Save Docker image to the workspace
-          command: docker save -o ~/workspace/docker_image.tar ${DOCKER_NAMESPACE}/${PROJECT_NAME}
+          command: docker save -o ~/workspace/docker_image.tar ${DOCKER_LOCAL_NAME}
       - persist_to_workspace:
           root: ~/workspace
           paths:
@@ -430,6 +432,16 @@ jobs:
           else
             image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
           fi
+          if [ "${DOCKER_SERVER}" = "docker.pkg.github.com" ]; then
+              # hack: github need :owner/:repo_name/:image_name
+              # we have something like:
+              #   docker.pkg.github.com/ledgerhq/ledger-vault-api:develop
+              # we need:
+              #   docker.pkg.github.com/ledgerhq/ledger-vault-api/ledger-vault-api:develop"
+              export DOCKER_TAG=$(echo ${DOCKER_TAG} | sed 's%\([a-zA-Z0-9\.\-]*\)/\([a-zA-Z0-9\.\-]*\)/\([a-zA-Z0-9\.\-]*\):\([a-zA-Z0-9\.\-]*\)%\1/\2/\3/\3:\4%g')
+              echo "export DOCKER_TAG=\"${DOCKER_TAG}\"" >> $BASH_ENV
+          fi
+
           docker tag ${image_name}:${CIRCLE_SHA1} ${DOCKER_TAG}
       - docker_login
       - run: docker push ${DOCKER_TAG}
