@@ -183,15 +183,33 @@ commands:
           environment:
             GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=no
 
+executors:
+  machine:
+    parameters:
+      resource_class:
+        description: https://circleci.com/docs/2.0/configuration-reference/#machine-executor-linux
+        type: enum
+        default: medium
+        enum:
+          - medium
+          - large
+          - xlarge
+          - 2xlarge
+          # Required to satisfy "circleci orb validate"
+          - TEST_STRING
+    machine: true
+    resource_class: << parameters.resource_class >>
+
 jobs:
   check_cookbook_version:
     description: Check that the cookbook version has been upgraded
-    machine: true
     parameters:
       base_branch:
         description: Base comparison off this branch
         type: string
         default: origin/master
+    executor:
+      name: machine
     steps:
       - checkout
       - run:
@@ -220,7 +238,8 @@ jobs:
             echo "Cookbook version upgrade : ${oldver} -> ${newver}"
   check_serial:
     description: Check that the serial has been increased
-    machine: true
+    executor:
+      name: machine
     steps:
       - checkout
       - run:
@@ -249,7 +268,8 @@ jobs:
             echo "Serial update : ${oldser} -> ${newser}"
   validate_json:
     description: Validate JSON files
-    machine: true
+    executor:
+      name: machine
     steps:
       - checkout
       - run:
@@ -271,10 +291,11 @@ jobs:
       - run: cookstyle
   kitchen:
     description: Execute Test Kitchen
-    # Dokken Kitchen driver doesn't work when launched from a Docker container
-    # https://github.com/someara/kitchen-dokken/issues/160#issuecomment-423829306
-    machine: true
     parameters:
+      resource_class:
+        description: Size of the CircleCI VM
+        type: string
+        default: medium
       test_kitchen_instance:
         description: Run Test Kitchen on this instance or set of instances in case of a regexp
         type: string
@@ -293,6 +314,11 @@ jobs:
           It will be passed to Test Kitchen through the DATA_BAGS_PATH environment variable
         type: string
         default: /tmp/databags/
+    # Dokken Kitchen driver doesn't work when launched from a Docker container
+    # https://github.com/someara/kitchen-dokken/issues/160#issuecomment-423829306
+    executor:
+      name: machine
+      resource_class: << parameters.resource_class >>
     steps:
       - checkout
       - install_chef_workstation
