@@ -375,10 +375,10 @@ jobs:
           command: |
             for file in $list_changed_files; do
               databag=$(basename $(dirname $file))
-              databag_exists="databag_${databag/-/_}_exists"
+              databag_exists="databag_${databag//-/_}_exists"
               if [ ${!databag_exists:-0} -ne 1 ]; then
                 knife data bag create $databag
-                declare databag_${databag/-/_}_exists=1
+                declare databag_${databag//-/_}_exists=1
               fi
               knife data bag from file $databag $file
             done
