@@ -44,7 +44,7 @@ examples:
                 data_bags_path: /tmp/databags/
 
   upload_cookbook:
-    description: Upload the cookbook on a Chef Server and publish a message on Slack
+    description: Upload the cookbook on a Chef Server
     usage:
       version: 2.1
 
@@ -57,13 +57,12 @@ examples:
             - chef/berks_upload:
                 chef_server_url: https://api.chef.io/organizations/my_chef_org
                 client_name: circleci
-                slack_notification: true
                 filters:
                   branches:
                     only: master
 
   upload_databags:
-    description: Upload the databags on a Chef Server and publish a message on Slack
+    description: Upload the databags on a Chef Server
     usage:
       version: 2.1
 
@@ -76,13 +75,9 @@ examples:
             - chef/knife_databag_upload:
                 chef_server_url: https://api.chef.io/organizations/my_chef_org
                 client_name: circleci
-                slack_notification: true
                 filters:
                   branches:
                     only: master
-
-orbs:
-  slack: circleci/slack@volatile
 
 aliases:
   - &test_kitchen
@@ -120,34 +115,6 @@ aliases:
         The private key is read from the CircleCI environment variable named CHEF_KEY.
       type: string
       default: circleci
-    slack_notification:
-      description: |
-        Publish a status message on Slack.
-        This feature relies on the circleci/slack orb.
-      type: boolean
-      default: true
-  - &parse_pr_number
-    name: Get the pull request number from the commit message
-    command: |
-      pull_request=$(git show -s --format="%B" HEAD | sed -nr '1 s/^.*#([[:digit:]]+)[^#]*$/\1/p')
-      if [ -n "${pull_request}" ]; then
-        echo "export pull_request='https://github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/pull/${pull_request}'" >> $BASH_ENV
-      fi
-    when: always
-  - &publish_slack_status
-    when:
-      condition: <<parameters.slack_notification>>
-      steps:
-        - slack/status:
-            success_message: |
-              :tada: A $CIRCLE_JOB job has succeeded! $SLACK_MENTIONS
-              Pull request : ${pull_request:-Not found}
-              Job triggered by : $CIRCLE_USERNAME
-            failure_message: |
-              :red_circle: A $CIRCLE_JOB job has failed! $SLACK_MENTIONS
-              Pull request : ${pull_request:-Not found}
-              Job triggered by : $CIRCLE_USERNAME
-            include_job_number_field: false
 
 commands:
   install_chef_workstation:
@@ -348,8 +315,6 @@ jobs:
       - run: *setup_knife
       - run: berks install --except=integration
       - run: berks upload --except=integration
-      - run: *parse_pr_number
-      - *publish_slack_status
   knife_databag_upload:
     description: Use Knife to sync databags with the Chef Server
     docker:
@@ -382,8 +347,6 @@ jobs:
               fi
               knife data bag from file $databag $file
             done
-      - run: *parse_pr_number
-      - *publish_slack_status
   knife_environment_upload:
     description: Use Knife to sync environments with the Chef Server
     docker:
@@ -406,8 +369,6 @@ jobs:
               env=$(basename -s ".json" $file)
               knife environment delete -y $env
             done
-      - run: *parse_pr_number
-      - *publish_slack_status
   knife_role_upload:
     description: Use Knife to sync roles with the Chef Server
     docker:
@@ -430,5 +391,3 @@ jobs:
               role=$(basename -s ".json" $file)
               knife role delete -y $role
             done
-      - run: *parse_pr_number
-      - *publish_slack_status
