@@ -166,27 +166,33 @@ commands:
             echo "export DOCKER_LOCAL_NAME=\"${local_name}\"" >> $BASH_ENV
   set_docker_tag_env_var:
     description: Set environment variable of the docker tag to push
+    parameters:
+      docker_tag:
+        description:
+          Override of the tag
+        type: string
+        default: ""
     steps:
       - run:
           name: Write environment variables to $BASH_ENV
           command: |
-            if [ -n "${CIRCLE_BRANCH}" -a -z "${CIRCLE_TAG}" ]; then
+            if [ -n "<< parameters.docker_tag >>" ]; then
+              TAG="<< parameters.docker_tag >>"
+            elif [ -n "${CIRCLE_BRANCH}" -a -z "${CIRCLE_TAG}" ]; then
               if [ "${CIRCLE_BRANCH}" = "master" ]; then
-                docker_tag="${DOCKER_IMAGE_NAME}:latest"
+                TAG="latest"
               else
-                BRANCH=$(echo $CIRCLE_BRANCH | sed 's/[^[:alnum:]_.-]/_/g')
-                docker_tag="${DOCKER_IMAGE_NAME}:${BRANCH}"
+                TAG=$(echo $CIRCLE_BRANCH | sed 's/[^[:alnum:]_.-]/_/g')
               fi
             elif [ -n "${CIRCLE_TAG}" -a -z "${CIRCLE_BRANCH}" ]; then
               TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
-              docker_tag="${DOCKER_IMAGE_NAME}:${TAG}"
             else
               echo "Unexpected condition state :" >&2
               echo "The build should be either commit-triggered or tag-triggered" >&2
               echo "So CircleCI should provide either the BRANCH or the TAG environment variable" >&2
               exit 1
             fi
-            echo "export DOCKER_TAG=\"${docker_tag}\"" >> $BASH_ENV
+            echo "export DOCKER_TAG=\"${DOCKER_IMAGE_NAME}:${TAG}\"" >> $BASH_ENV
   docker_login:
     description: Login to the Docker registry
     steps:
@@ -209,7 +215,7 @@ commands:
     parameters:
       docker_source_namespace:
         description:
-          Override the docker tag used to push
+          Override the image namespace to push
         type: string
         default: ""
     steps:
@@ -417,13 +423,19 @@ jobs:
         default: ""
       docker_source_namespace:
         description:
-          Override the docker tag used to push
+          Override the image namespace to push
+        type: string
+        default: ""
+      docker_tag:
+        description:
+          Override the tag to push
         type: string
         default: ""
     steps:
       - set_image_name_env_vars:
           docker_project_name: << parameters.docker_project_name >>
-      - set_docker_tag_env_var
+      - set_docker_tag_env_var:
+          docker_tag: << parameters.docker_tag>>
       - load_image:
           docker_source_namespace: << parameters.docker_source_namespace >>
       - run: |
