@@ -128,9 +128,10 @@ aliases:
 
 executors:
   machine-executor:
-    description: Image embedding docker 18.06.0-ce, docker-compose 1.22.0
+    # See https://circleci.com/docs/2.0/configuration-reference/#available-machine-images for supported images
+    description: Ubuntu 20.04, Docker v20.10.6, Docker Compose v1.29.1
     machine:
-      image: circleci/classic:201808-01
+      image: ubuntu-2004:202104-01
 
 commands:
   set_image_name_env_vars:
