@@ -105,6 +105,10 @@ aliases:
       list_deleted_files=$(git diff ${base}..HEAD --no-renames --diff-filter=D --name-only "*\.json" | tee /dev/tty)
       echo "export list_deleted_files='$list_deleted_files'" >> $BASH_ENV
   - &upload_jobs_common_parameters
+    chef_workstation_version:
+      description: https://hub.docker.com/r/chef/chefworkstation/tags?page=1&ordering=last_updated
+      type: string
+      default: stable
     chef_server_url:
       description: The Chef server URL
       type: string
@@ -166,6 +170,14 @@ executors:
           - TEST_STRING
     machine: true
     resource_class: << parameters.resource_class >>
+  chef_workstation:
+    parameters:
+      version:
+        description: https://hub.docker.com/r/chef/chefworkstation/tags?page=1&ordering=last_updated
+        type: string
+        default: stable
+    docker:
+      - image: chef/chefworkstation:<< parameters.version >>
 
 jobs:
   check_cookbook_version:
@@ -244,15 +256,27 @@ jobs:
           command: find . -name "*\.json" | parallel --tag jq '.' > /dev/null
   rubocop:
     description: Execute Rubocop analyzer
-    docker:
-      - image: chef/chefworkstation
+    parameters:
+      chef_workstation_version:
+        description: https://hub.docker.com/r/chef/chefworkstation/tags?page=1&ordering=last_updated
+        type: string
+        default: stable
+    executor:
+      name: chef_workstation
+      version: << parameters.chef_workstation_version >>
     steps:
       - checkout
       - run: rubocop
   cookstyle:
     description: Execute Cookstyle analyzer
-    docker:
-      - image: chef/chefworkstation
+    parameters:
+      chef_workstation_version:
+        description: https://hub.docker.com/r/chef/chefworkstation/tags?page=1&ordering=last_updated
+        type: string
+        default: stable
+    executor:
+      name: chef_workstation
+      version: << parameters.chef_workstation_version >>
     steps:
       - checkout
       - run: cookstyle
@@ -307,9 +331,10 @@ jobs:
           path: << parameters.junit_output >>
   berks_upload:
     description: Use Berkshelf to upload the cookbook on a Chef Server
-    docker:
-      - image: chef/chefworkstation
     parameters: *upload_jobs_common_parameters
+    executor:
+      name: chef_workstation
+      version: << parameters.chef_workstation_version >>
     steps:
       - checkout
       - run: *setup_knife
@@ -317,9 +342,10 @@ jobs:
       - run: berks upload --except=integration
   knife_databag_upload:
     description: Use Knife to sync databags with the Chef Server
-    docker:
-      - image: chef/chefworkstation
     parameters: *upload_jobs_common_parameters
+    executor:
+      name: chef_workstation
+      version: << parameters.chef_workstation_version >>
     steps:
       - checkout
       - run: *setup_knife
@@ -349,9 +375,10 @@ jobs:
             done
   knife_environment_upload:
     description: Use Knife to sync environments with the Chef Server
-    docker:
-      - image: chef/chefworkstation
     parameters: *upload_jobs_common_parameters
+    executor:
+      name: chef_workstation
+      version: << parameters.chef_workstation_version >>
     steps:
       - checkout
       - run: *setup_knife
@@ -371,9 +398,10 @@ jobs:
             done
   knife_role_upload:
     description: Use Knife to sync roles with the Chef Server
-    docker:
-      - image: chef/chefworkstation
     parameters: *upload_jobs_common_parameters
+    executor:
+      name: chef_workstation
+      version: << parameters.chef_workstation_version >>
     steps:
       - checkout
       - run: *setup_knife
