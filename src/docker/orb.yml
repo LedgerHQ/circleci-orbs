@@ -128,9 +128,10 @@ aliases:
 
 executors:
   machine-executor:
-    description: Image embedding docker 18.06.0-ce, docker-compose 1.22.0
+    # See https://circleci.com/docs/2.0/configuration-reference/#available-machine-images for supported images
+    description: Ubuntu 20.04, Docker v20.10.6, Docker Compose v1.29.1
     machine:
-      image: circleci/classic:201808-01
+      image: ubuntu-2004:202104-01
 
 commands:
   set_image_name_env_vars:
@@ -262,6 +263,14 @@ jobs:
           Name of the project to build
         type: string
         default: ""
+      buildkit:
+        description: |
+          Enable Buildkit.
+          Set this to true if your build relies on Docker Buildkit
+        type: boolean
+        default: false
+    environment:
+        DOCKER_BUILDKIT: << parameters.buildkit >>
     steps:
       - set_image_name_env_vars:
           docker_project_name: << parameters.docker_project_name >>
@@ -338,6 +347,12 @@ jobs:
       - when:
           condition: << parameters.docker_compose_configuration >>
           steps:
+            - run:
+                name: Compute CircleCI configuration directory path
+                command: |
+                    # eval is needed for the CIRCLE_WORKING_DIRECTORY variable as it contains a non-expanded '~'
+                    eval CIRCLE_CONFIG_DIRECTORY=${CIRCLE_WORKING_DIRECTORY}/.circleci
+                    echo "export CIRCLE_CONFIG_DIRECTORY='$CIRCLE_CONFIG_DIRECTORY'" >> $BASH_ENV
             - when:
                 condition: << parameters.docker_compose_env_vars >>
                 steps:
@@ -345,15 +360,17 @@ jobs:
                       name: Set environment variables read by docker-compose
                       # '<<' must be escaped in v2.1+
                       # https://discuss.circleci.com/t/2-1-config-and-build-processing/24102/31
+                      # With docker-compose v1.28+, .env file should be in project directory or specified using --env_file
+                      # See: https://docs.docker.com/compose/env-file/
                       command: |
-                        cat > .env \<< EOF
+                        cat > ${CIRCLE_CONFIG_DIRECTORY}/.env \<< EOF
                         << parameters.docker_compose_env_vars >>
                         EOF
             - run:
                 name: Display docker-compose configuration
                 command: |
                   # eval is needed for the CIRCLE_WORKING_DIRECTORY variable as it contains a non-expanded '~'
-                  eval docker_compose_config=${CIRCLE_WORKING_DIRECTORY}/.circleci/<< parameters.docker_compose_configuration >>
+                  docker_compose_config=${CIRCLE_CONFIG_DIRECTORY}/<< parameters.docker_compose_configuration >>
                   echo "export docker_compose_config='$docker_compose_config'" >> $BASH_ENV
                   docker-compose -f $docker_compose_config -p ci config
       - run:
