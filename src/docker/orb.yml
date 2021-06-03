@@ -263,6 +263,14 @@ jobs:
           Name of the project to build
         type: string
         default: ""
+      buildkit:
+        description: |
+          Enable Buildkit.
+          Set this to true if your build relies on Docker Buildkit
+        type: boolean
+        default: false
+    environment:
+        DOCKER_BUILDKIT: << parameters.buildkit >>
     steps:
       - set_image_name_env_vars:
           docker_project_name: << parameters.docker_project_name >>
