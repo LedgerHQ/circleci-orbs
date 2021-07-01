@@ -359,12 +359,22 @@ jobs:
           Override the image namespace to push
         type: string
         default: ""
+      docker_login:
+        description: |
+          Login to Docker registry given as context before testing.
+          Set this parameter to true if the docker-compose or goss pull on a private image.
+        type: boolean
+        default: false
     steps:
       - set_image_name_env_vars:
           docker_project_name: << parameters.docker_project_name >>
           docker_source_namespace: << parameters.docker_source_namespace >>
       - load_image
       - checkout
+      - when:
+          condition: << parameters.docker_login >>
+          steps:
+            - docker_login
       - when:
           condition: << parameters.docker_compose_configuration >>
           steps:
@@ -414,7 +424,6 @@ jobs:
       - when:
           condition: << parameters.docker_compose_configuration >>
           steps:
-            - docker_login
             - run:
                 name: Setup docker-compose environment powering service dependencies
                 command: |
