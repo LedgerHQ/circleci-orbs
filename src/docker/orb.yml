@@ -167,8 +167,8 @@ commands:
               PROJECT_NAME="<< parameters.docker_project_name >>"
             fi
             eval echo 'export PROJECT_NAME="$(echo ${PROJECT_NAME}| sed 's/[^[:alnum:]_.-]/_/g')"' >> $BASH_ENV
+            local_name=${PROJECT_NAME}
             image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
-            local_name=${image_name}
             if [ -n "${DOCKER_SERVER}" ]; then
               image_name="${DOCKER_SERVER}/${image_name}"
             fi
@@ -181,7 +181,10 @@ commands:
               image_name="${image_name}/${PROJECT_NAME}"
             fi
             echo "export DOCKER_IMAGE_NAME=\"${image_name}\"" >> $BASH_ENV
-            echo "Docker image name is \"${image_name}\""
+            echo "Docker final image name is \"${image_name}\""
+            echo "export DOCKER_LOCAL_NAME=\"${local_name}\"" >> $BASH_ENV
+            echo "Docker image will be referenced locally as \"${local_name}\""
+
   set_docker_tag_env_var:
     description: Set environment variable of the docker tag to push
     parameters:
@@ -237,7 +240,7 @@ commands:
       - run: docker load -i ~/workspace/docker_image.tar
       - run:
           name: Check docker image existence
-          command: docker inspect ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} &> /dev/null
+          command: docker inspect ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} &> /dev/null
 
 jobs:
   build_image:
@@ -296,7 +299,7 @@ jobs:
           name: Build Docker image
           command: |
             echo ".git" >> << parameters.docker_build_target >>/.dockerignore
-            docker_args="-t ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} << parameters.docker_build_args >>"
+            docker_args="-t ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} << parameters.docker_build_args >>"
             echo "Executing docker build with the following arguments :" ${docker_args}
             docker build ${docker_args} << parameters.docker_build_target >>
       - run:
@@ -304,7 +307,7 @@ jobs:
           command: mkdir -pv ~/workspace
       - run:
           name: Save Docker image to the workspace
-          command: docker save -o ~/workspace/docker_image.tar ${DOCKER_IMAGE_NAME}
+          command: docker save -o ~/workspace/docker_image.tar ${DOCKER_LOCAL_NAME}
       - persist_to_workspace:
           root: ~/workspace
           paths:
@@ -429,7 +432,7 @@ jobs:
           name: Run goss validation
           command: |
             echo "Executing dgoss run with the following arguments :" $docker_opts
-            dgoss run $docker_opts ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1}
+            dgoss run $docker_opts ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1}
       - when:
           condition: << parameters.docker_compose_single_use >>
           steps:
@@ -443,7 +446,7 @@ jobs:
           name: Run goss validation again to extract the JUnit result
           command: |
             mkdir -p /tmp/goss-test-results/goss
-            GOSS_OPTS="--format junit" dgoss run $docker_opts ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} 2>&1 | \
+            GOSS_OPTS="--format junit" dgoss run $docker_opts ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} 2>&1 | \
               sed -n '/^<[[:alpha:]/?]/p' > /tmp/goss-test-results/goss/results.xml
       - store_test_results:
           path: /tmp/goss-test-results
@@ -473,6 +476,6 @@ jobs:
       - set_docker_tag_env_var:
           docker_tag: << parameters.docker_tag>>
       - load_image
-      - run: docker tag ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} ${DOCKER_TAG}
+      - run: docker tag ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} ${DOCKER_TAG}
       - docker_login
       - run: docker push ${DOCKER_TAG}
