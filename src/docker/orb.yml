@@ -181,6 +181,7 @@ commands:
               image_name="${image_name}/${PROJECT_NAME}"
             fi
             echo "export DOCKER_IMAGE_NAME=\"${image_name}\"" >> $BASH_ENV
+            echo "Docker image name is \"${image_name}\""
   set_docker_tag_env_var:
     description: Set environment variable of the docker tag to push
     parameters:
@@ -210,6 +211,7 @@ commands:
               exit 1
             fi
             echo "export DOCKER_TAG=\"${DOCKER_IMAGE_NAME}:${TAG}\"" >> $BASH_ENV
+            echo "Docker image name with tag is \"${TAG}\""
   docker_login:
     description: Login to the Docker registry
     steps:
