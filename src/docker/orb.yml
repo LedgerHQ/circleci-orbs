@@ -172,8 +172,15 @@ commands:
             if [ -n "${DOCKER_SERVER}" ]; then
               image_name="${DOCKER_SERVER}/${image_name}"
             fi
+            if [ "${DOCKER_SERVER}" = "docker.pkg.github.com" ]; then
+              # hack: github need :owner/:repo_name/:image_name
+              # we have something like:
+              #   docker.pkg.github.com/ledgerhq/ledger-vault-api
+              # we need:
+              #   docker.pkg.github.com/ledgerhq/ledger-vault-api/ledger-vault-api
+              image_name="${image_name}/${PROJECT_NAME}"
+            fi
             echo "export DOCKER_IMAGE_NAME=\"${image_name}\"" >> $BASH_ENV
-            echo "export DOCKER_LOCAL_NAME=\"${local_name}\"" >> $BASH_ENV
   set_docker_tag_env_var:
     description: Set environment variable of the docker tag to push
     parameters:
@@ -464,17 +471,6 @@ jobs:
       - set_docker_tag_env_var:
           docker_tag: << parameters.docker_tag>>
       - load_image
-      - run: |
-          if [ "${DOCKER_SERVER}" = "docker.pkg.github.com" ]; then
-              # hack: github need :owner/:repo_name/:image_name
-              # we have something like:
-              #   docker.pkg.github.com/ledgerhq/ledger-vault-api:develop
-              # we need:
-              #   docker.pkg.github.com/ledgerhq/ledger-vault-api/ledger-vault-api:develop"
-              export DOCKER_TAG=$(echo ${DOCKER_TAG} | sed 's%\([a-zA-Z0-9\.\-]*\)/\([a-zA-Z0-9\.\-]*\)/\([a-zA-Z0-9\.\-]*\):\([a-zA-Z0-9\.\-]*\)%\1/\2/\3/\3:\4%g')
-              echo "export DOCKER_TAG=\"${DOCKER_TAG}\"" >> $BASH_ENV
-          fi
-
-          docker tag ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} ${DOCKER_TAG}
+      - run: docker tag ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} ${DOCKER_TAG}
       - docker_login
       - run: docker push ${DOCKER_TAG}
