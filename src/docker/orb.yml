@@ -142,14 +142,23 @@ commands:
           Name of the project to build
         type: string
         default: ""
+      docker_source_namespace:
+        description:
+          Override the image namespace
+        type: string
+        default: ""
     steps:
       - run:
           name: Write environment variables to $BASH_ENV
           command: |
-            DOCKER_NAMESPACE="${DOCKER_ORGANIZATION:-${DOCKER_USERNAME}}"
-            # On public repositories, CircleCI environment variables are not transmitted to jobs triggered by a forked PR
-            # so if the DOCKER_NAMESPACE is empty then fall back to a generic CircleCI-provided variable
-            DOCKER_NAMESPACE="${DOCKER_NAMESPACE:-${CIRCLE_USERNAME}}"
+            if [ -n "<< parameters.docker_source_namespace >>" ]; then
+              DOCKER_NAMESPACE="<< parameters.docker_source_namespace >>"
+            else
+              DOCKER_NAMESPACE="${DOCKER_ORGANIZATION:-${DOCKER_USERNAME}}"
+              # On public repositories, CircleCI environment variables are not transmitted to jobs triggered by a forked PR
+              # so if the DOCKER_NAMESPACE is empty then fall back to a generic CircleCI-provided variable
+              DOCKER_NAMESPACE="${DOCKER_NAMESPACE:-${CIRCLE_USERNAME}}"
+            fi
             # Docker repository name must be lowercase
             eval echo 'export DOCKER_NAMESPACE="${DOCKER_NAMESPACE,,}"' >> $BASH_ENV
             if [ -z "<< parameters.docker_project_name >>" ]; then
@@ -213,25 +222,13 @@ commands:
   load_image:
     description: |
       Loads the docker image that has been built from the workspace
-    parameters:
-      docker_source_namespace:
-        description:
-          Override the image namespace to push
-        type: string
-        default: ""
     steps:
       - attach_workspace:
           at: ~/workspace
       - run: docker load -i ~/workspace/docker_image.tar
       - run:
           name: Check docker image existence
-          command: |
-            if [ -n "<< parameters.docker_source_namespace >>" ]; then
-              image_name="<< parameters.docker_source_namespace >>/${PROJECT_NAME}"
-            else
-              image_name="${DOCKER_LOCAL_NAME}"
-            fi
-            docker inspect ${image_name}:${CIRCLE_SHA1} &> /dev/null
+          command: docker inspect ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} &> /dev/null
 
 jobs:
   build_image:
@@ -263,6 +260,11 @@ jobs:
           Name of the project to build
         type: string
         default: ""
+      docker_source_namespace:
+        description:
+          Override the image namespace
+        type: string
+        default: ""
       buildkit:
         description: |
           Enable Buildkit.
@@ -274,6 +276,7 @@ jobs:
     steps:
       - set_image_name_env_vars:
           docker_project_name: << parameters.docker_project_name >>
+          docker_source_namespace: << parameters.docker_source_namespace >>
       - checkout
       - steps: << parameters.after_checkout >>
       - when:
@@ -284,7 +287,7 @@ jobs:
           name: Build Docker image
           command: |
             echo ".git" >> << parameters.docker_build_target >>/.dockerignore
-            docker_args="-t ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} << parameters.docker_build_args >>"
+            docker_args="-t ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} << parameters.docker_build_args >>"
             echo "Executing docker build with the following arguments :" ${docker_args}
             docker build ${docker_args} << parameters.docker_build_target >>
       - run:
@@ -292,7 +295,7 @@ jobs:
           command: mkdir -pv ~/workspace
       - run:
           name: Save Docker image to the workspace
-          command: docker save -o ~/workspace/docker_image.tar ${DOCKER_LOCAL_NAME}
+          command: docker save -o ~/workspace/docker_image.tar ${DOCKER_IMAGE_NAME}
       - persist_to_workspace:
           root: ~/workspace
           paths:
@@ -339,9 +342,15 @@ jobs:
           Name of the project to build
         type: string
         default: ""
+      docker_source_namespace:
+        description:
+          Override the image namespace to push
+        type: string
+        default: ""
     steps:
       - set_image_name_env_vars:
           docker_project_name: << parameters.docker_project_name >>
+          docker_source_namespace: << parameters.docker_source_namespace >>
       - load_image
       - checkout
       - when:
@@ -411,7 +420,7 @@ jobs:
           name: Run goss validation
           command: |
             echo "Executing dgoss run with the following arguments :" $docker_opts
-            dgoss run $docker_opts ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1}
+            dgoss run $docker_opts ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1}
       - when:
           condition: << parameters.docker_compose_single_use >>
           steps:
@@ -425,7 +434,7 @@ jobs:
           name: Run goss validation again to extract the JUnit result
           command: |
             mkdir -p /tmp/goss-test-results/goss
-            GOSS_OPTS="--format junit" dgoss run $docker_opts ${DOCKER_NAMESPACE}/${PROJECT_NAME}:${CIRCLE_SHA1} 2>&1 | \
+            GOSS_OPTS="--format junit" dgoss run $docker_opts ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} 2>&1 | \
               sed -n '/^<[[:alpha:]/?]/p' > /tmp/goss-test-results/goss/results.xml
       - store_test_results:
           path: /tmp/goss-test-results
@@ -451,16 +460,11 @@ jobs:
     steps:
       - set_image_name_env_vars:
           docker_project_name: << parameters.docker_project_name >>
+          docker_source_namespace: << parameters.docker_source_namespace >>
       - set_docker_tag_env_var:
           docker_tag: << parameters.docker_tag>>
-      - load_image:
-          docker_source_namespace: << parameters.docker_source_namespace >>
+      - load_image
       - run: |
-          if [ -n "<< parameters.docker_source_namespace >>" ]; then
-            image_name="<< parameters.docker_source_namespace >>/${PROJECT_NAME}"
-          else
-            image_name="${DOCKER_NAMESPACE}/${PROJECT_NAME}"
-          fi
           if [ "${DOCKER_SERVER}" = "docker.pkg.github.com" ]; then
               # hack: github need :owner/:repo_name/:image_name
               # we have something like:
@@ -471,6 +475,6 @@ jobs:
               echo "export DOCKER_TAG=\"${DOCKER_TAG}\"" >> $BASH_ENV
           fi
 
-          docker tag ${image_name}:${CIRCLE_SHA1} ${DOCKER_TAG}
+          docker tag ${DOCKER_IMAGE_NAME}:${CIRCLE_SHA1} ${DOCKER_TAG}
       - docker_login
       - run: docker push ${DOCKER_TAG}
