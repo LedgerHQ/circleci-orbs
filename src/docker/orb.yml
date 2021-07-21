@@ -134,6 +134,42 @@ executors:
       image: ubuntu-2004:202104-01
 
 commands:
+  set_metadata:
+    description: Compute all metadatas and expose them as DOCKER_ prefixed environment variables
+    parameters:
+      docker_project_name:
+        description: Name of the project to build
+        type: string
+        default: ""
+      docker_source_namespace:
+        description: Override the image namespace
+        type: string
+        default: ""
+      docker_tag:
+        description: Override of the tag
+        type: string
+        default: ""
+    steps:
+      - set_image_name_env_vars:
+          docker_project_name: << parameters.docker_project_name >>
+          docker_source_namespace: << parameters.docker_source_namespace >>
+      - set_docker_tag_env_var:
+          docker_tag: << parameters.docker_tag>>
+      - run:
+          name: Compute labels and expose them as arguments into $DOCKER_LABELS_ARGS
+          environment:
+            LABELS_ARGS: >-
+              --label "org.opencontainers.image.title=${CIRCLE_PROJECT_REPONAME}"
+              --label "org.opencontainers.image.created=`date -Iseconds`"
+              --label "org.opencontainers.image.authors=Ledger"
+              --label "org.opencontainers.image.url=${CIRCLE_REPOSITORY_URL}"
+              --label "org.opencontainers.image.documentation=${CIRCLE_REPOSITORY_URL}"
+              --label "org.opencontainers.image.source=${CIRCLE_REPOSITORY_URL}"
+              --label "org.opencontainers.image.revision=${CIRCLE_SHA1}"
+              --label "org.opencontainers.image.ref.name=${CIRCLE_TAG:${CIRCLE_BRANCH}}"
+              --label "org.opencontainers.image.version=${DOCKER_TAG_ONLY}"
+          command: echo "export DOCKER_LABELS_ARGS=\"${LABEL_ARGS}\"" >> $BASH_ENV
+    
   set_image_name_env_vars:
     description: Set environment variables used to name the docker image
     parameters:
@@ -214,6 +250,7 @@ commands:
               exit 1
             fi
             echo "export DOCKER_TAG=\"${DOCKER_IMAGE_NAME}:${TAG}\"" >> $BASH_ENV
+            echo "export DOCKER_TAG_ONLY=\"${TAG}\"" >> $BASH_ENV
             echo "Docker image name with tag is \"${TAG}\""
   docker_login:
     description: Login to the Docker registry
@@ -283,12 +320,18 @@ jobs:
           Set this to true if your build relies on Docker Buildkit
         type: boolean
         default: false
+      docker_tag:
+        description:
+          Override the tag to push
+        type: string
+        default: ""
     environment:
         DOCKER_BUILDKIT: << parameters.buildkit >>
     steps:
-      - set_image_name_env_vars:
+      - set_metadata:
           docker_project_name: << parameters.docker_project_name >>
           docker_source_namespace: << parameters.docker_source_namespace >>
+          docker_tag: << parameters.docker_tag>>
       - checkout
       - steps: << parameters.after_checkout >>
       - when:
@@ -299,7 +342,7 @@ jobs:
           name: Build Docker image
           command: |
             echo ".git" >> << parameters.docker_build_target >>/.dockerignore
-            docker_args="-t ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} << parameters.docker_build_args >>"
+            docker_args="-t ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} ${DOCKER_LABELS_ARGS} << parameters.docker_build_args >>"
             echo "Executing docker build with the following arguments :" ${docker_args}
             docker build ${docker_args} << parameters.docker_build_target >>
       - run:
@@ -479,10 +522,9 @@ jobs:
         type: string
         default: ""
     steps:
-      - set_image_name_env_vars:
+      - set_metadata:
           docker_project_name: << parameters.docker_project_name >>
           docker_source_namespace: << parameters.docker_source_namespace >>
-      - set_docker_tag_env_var:
           docker_tag: << parameters.docker_tag>>
       - load_image
       - run: docker tag ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} ${DOCKER_TAG}
