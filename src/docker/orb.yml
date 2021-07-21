@@ -236,7 +236,7 @@ commands:
             if [ -n "<< parameters.docker_tag >>" ]; then
               TAG="<< parameters.docker_tag >>"
             elif [ -n "${CIRCLE_BRANCH}" -a -z "${CIRCLE_TAG}" ]; then
-              if [ "${CIRCLE_BRANCH}" = "master" ]; then
+              if [[ "${CIRCLE_BRANCH}" == "master" || "${CIRCLE_BRANCH}" == "main" ]]; then
                 TAG="latest"
               else
                 TAG=$(echo $CIRCLE_BRANCH | sed 's/[^[:alnum:]_.-]/_/g')
