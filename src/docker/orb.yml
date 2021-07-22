@@ -233,25 +233,43 @@ commands:
       - run:
           name: Write environment variables to $BASH_ENV
           command: |
+            SEMVER_SUFFIXES="(rc|alpha|beta|pre|dev)"
+
             if [ -n "<< parameters.docker_tag >>" ]; then
               TAG="<< parameters.docker_tag >>"
-            elif [ -n "${CIRCLE_BRANCH}" -a -z "${CIRCLE_TAG}" ]; then
+            elif [[ -n "${CIRCLE_TAG}" ]]; then
+              TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
+            elif [[ -n "${CIRCLE_BRANCH}" ]]; then
               if [[ "${CIRCLE_BRANCH}" == "master" || "${CIRCLE_BRANCH}" == "main" ]]; then
+                # latest tag on main/master
                 TAG="latest"
+              elif [[ "${CIRCLE_BRANCH}" =~ ^release\/[0-9]+\.[0-9]+$ ]]; then
+                # latest-<major>.<minor> on release/<major>.<minor> branches
+                TAG="latest-${CIRCLE_BRANCH##*/}"
               else
                 TAG=$(echo $CIRCLE_BRANCH | sed 's/[^[:alnum:]_.-]/_/g')
               fi
-            elif [ -n "${CIRCLE_TAG}" -a -z "${CIRCLE_BRANCH}" ]; then
-              TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
             else
               echo "Unexpected condition state :" >&2
               echo "The build should be either commit-triggered or tag-triggered" >&2
               echo "So CircleCI should provide either the BRANCH or the TAG environment variable" >&2
               exit 1
             fi
+
             echo "export DOCKER_TAG=\"${DOCKER_IMAGE_NAME}:${TAG}\"" >> $BASH_ENV
             echo "export DOCKER_TAG_ONLY=\"${TAG}\"" >> $BASH_ENV
             echo "Docker image name with tag is \"${TAG}\""
+
+            # Optionnal <major.minor> rolling tag on sem-ver 
+            if [[ "$TAG" =~ ^[0-9]+(\.[0-9]+)+(-$SEMVER_SUFFIXES(\.|-)?[0-9]+)?$ ]]; then
+              major=`echo $TAG | cut -d. -f1`
+              minor=`echo $TAG | cut -d. -f2`
+              ROLLING_TAG="$major.$minor"
+              echo "Docker image rolling tag is \"${ROLLING_TAG}\""
+              echo "export DOCKER_ROLLING_TAG=\"${DOCKER_IMAGE_NAME}:${ROLLING_TAG}\"" >> $BASH_ENV
+              echo "export DOCKER_ROLLING_TAG_ONLY=\"${ROLLING_TAG}\"" >> $BASH_ENV
+            fi
+
   docker_login:
     description: Login to the Docker registry
     steps:
@@ -521,6 +539,10 @@ jobs:
           Override the tag to push
         type: string
         default: ""
+      rolling_tag:
+        description: Also publish the rolling tag (ie. <major>.<minor>) if a semver version is detected
+        type: boolean
+        default: false
     steps:
       - set_metadata:
           docker_project_name: << parameters.docker_project_name >>
@@ -530,3 +552,11 @@ jobs:
       - run: docker tag ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} ${DOCKER_TAG}
       - docker_login
       - run: docker push ${DOCKER_TAG}
+      - when: 
+          condition: 
+            and: 
+              - << parameters.rolling_tag >>
+              - "${DOCKER_ROLLING_TAG}"
+          steps:
+            - run: docker tag ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} ${DOCKER_ROLLING_TAG}
+            - run: docker push ${DOCKER_ROLLING_TAG}
