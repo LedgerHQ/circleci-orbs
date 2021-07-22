@@ -134,6 +134,42 @@ executors:
       image: ubuntu-2004:202104-01
 
 commands:
+  set_metadata:
+    description: Compute all metadatas and expose them as DOCKER_ prefixed environment variables
+    parameters:
+      docker_project_name:
+        description: Name of the project to build
+        type: string
+        default: ""
+      docker_source_namespace:
+        description: Override the image namespace
+        type: string
+        default: ""
+      docker_tag:
+        description: Override of the tag
+        type: string
+        default: ""
+    steps:
+      - set_image_name_env_vars:
+          docker_project_name: << parameters.docker_project_name >>
+          docker_source_namespace: << parameters.docker_source_namespace >>
+      - set_docker_tag_env_var:
+          docker_tag: << parameters.docker_tag>>
+      - run:
+          name: Compute labels and expose them as arguments into $DOCKER_LABELS_ARGS
+          environment:
+            LABELS_ARGS: >-
+              --label "org.opencontainers.image.title=${CIRCLE_PROJECT_REPONAME}"
+              --label "org.opencontainers.image.created=`date -Iseconds`"
+              --label "org.opencontainers.image.authors=Ledger"
+              --label "org.opencontainers.image.url=${CIRCLE_REPOSITORY_URL}"
+              --label "org.opencontainers.image.documentation=${CIRCLE_REPOSITORY_URL}"
+              --label "org.opencontainers.image.source=${CIRCLE_REPOSITORY_URL}"
+              --label "org.opencontainers.image.revision=${CIRCLE_SHA1}"
+              --label "org.opencontainers.image.ref.name=${CIRCLE_TAG:${CIRCLE_BRANCH}}"
+              --label "org.opencontainers.image.version=${DOCKER_TAG_ONLY}"
+          command: echo "export DOCKER_LABELS_ARGS=\"${LABEL_ARGS}\"" >> $BASH_ENV
+    
   set_image_name_env_vars:
     description: Set environment variables used to name the docker image
     parameters:
@@ -197,24 +233,43 @@ commands:
       - run:
           name: Write environment variables to $BASH_ENV
           command: |
+            SEMVER_SUFFIXES="(rc|alpha|beta|pre|dev)"
+
             if [ -n "<< parameters.docker_tag >>" ]; then
               TAG="<< parameters.docker_tag >>"
-            elif [ -n "${CIRCLE_BRANCH}" -a -z "${CIRCLE_TAG}" ]; then
-              if [ "${CIRCLE_BRANCH}" = "master" ]; then
+            elif [[ -n "${CIRCLE_TAG}" ]]; then
+              TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
+            elif [[ -n "${CIRCLE_BRANCH}" ]]; then
+              if [[ "${CIRCLE_BRANCH}" == "master" || "${CIRCLE_BRANCH}" == "main" ]]; then
+                # latest tag on main/master
                 TAG="latest"
+              elif [[ "${CIRCLE_BRANCH}" =~ ^release\/[0-9]+\.[0-9]+$ ]]; then
+                # latest-<major>.<minor> on release/<major>.<minor> branches
+                TAG="latest-${CIRCLE_BRANCH##*/}"
               else
                 TAG=$(echo $CIRCLE_BRANCH | sed 's/[^[:alnum:]_.-]/_/g')
               fi
-            elif [ -n "${CIRCLE_TAG}" -a -z "${CIRCLE_BRANCH}" ]; then
-              TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
             else
               echo "Unexpected condition state :" >&2
               echo "The build should be either commit-triggered or tag-triggered" >&2
               echo "So CircleCI should provide either the BRANCH or the TAG environment variable" >&2
               exit 1
             fi
+
             echo "export DOCKER_TAG=\"${DOCKER_IMAGE_NAME}:${TAG}\"" >> $BASH_ENV
+            echo "export DOCKER_TAG_ONLY=\"${TAG}\"" >> $BASH_ENV
             echo "Docker image name with tag is \"${TAG}\""
+
+            # Optionnal <major.minor> rolling tag on sem-ver 
+            if [[ "$TAG" =~ ^[0-9]+(\.[0-9]+)+(-$SEMVER_SUFFIXES(\.|-)?[0-9]+)?$ ]]; then
+              major=`echo $TAG | cut -d. -f1`
+              minor=`echo $TAG | cut -d. -f2`
+              ROLLING_TAG="$major.$minor"
+              echo "Docker image rolling tag is \"${ROLLING_TAG}\""
+              echo "export DOCKER_ROLLING_TAG=\"${DOCKER_IMAGE_NAME}:${ROLLING_TAG}\"" >> $BASH_ENV
+              echo "export DOCKER_ROLLING_TAG_ONLY=\"${ROLLING_TAG}\"" >> $BASH_ENV
+            fi
+
   docker_login:
     description: Login to the Docker registry
     steps:
@@ -283,12 +338,18 @@ jobs:
           Set this to true if your build relies on Docker Buildkit
         type: boolean
         default: false
+      docker_tag:
+        description:
+          Override the tag to push
+        type: string
+        default: ""
     environment:
         DOCKER_BUILDKIT: << parameters.buildkit >>
     steps:
-      - set_image_name_env_vars:
+      - set_metadata:
           docker_project_name: << parameters.docker_project_name >>
           docker_source_namespace: << parameters.docker_source_namespace >>
+          docker_tag: << parameters.docker_tag>>
       - checkout
       - steps: << parameters.after_checkout >>
       - when:
@@ -299,7 +360,7 @@ jobs:
           name: Build Docker image
           command: |
             echo ".git" >> << parameters.docker_build_target >>/.dockerignore
-            docker_args="-t ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} << parameters.docker_build_args >>"
+            docker_args="-t ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} ${DOCKER_LABELS_ARGS} << parameters.docker_build_args >>"
             echo "Executing docker build with the following arguments :" ${docker_args}
             docker build ${docker_args} << parameters.docker_build_target >>
       - run:
@@ -478,13 +539,24 @@ jobs:
           Override the tag to push
         type: string
         default: ""
+      rolling_tag:
+        description: Also publish the rolling tag (ie. <major>.<minor>) if a semver version is detected
+        type: boolean
+        default: false
     steps:
-      - set_image_name_env_vars:
+      - set_metadata:
           docker_project_name: << parameters.docker_project_name >>
           docker_source_namespace: << parameters.docker_source_namespace >>
-      - set_docker_tag_env_var:
           docker_tag: << parameters.docker_tag>>
       - load_image
       - run: docker tag ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} ${DOCKER_TAG}
       - docker_login
       - run: docker push ${DOCKER_TAG}
+      - when: 
+          condition: 
+            and: 
+              - << parameters.rolling_tag >>
+              - "${DOCKER_ROLLING_TAG}"
+          steps:
+            - run: docker tag ${DOCKER_LOCAL_NAME}:${CIRCLE_SHA1} ${DOCKER_ROLLING_TAG}
+            - run: docker push ${DOCKER_ROLLING_TAG}
