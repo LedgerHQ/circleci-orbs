@@ -240,8 +240,9 @@ commands:
             elif [[ -n "${CIRCLE_TAG}" ]]; then
               TAG=$(echo $CIRCLE_TAG | sed 's/[^[:alnum:]_.-]/_/g')
             elif [[ -n "${CIRCLE_BRANCH}" ]]; then
-              if [[ "${CIRCLE_BRANCH}" == "master" || "${CIRCLE_BRANCH}" == "main" ]]; then
-                # latest tag on main/master
+              if [[ "${CIRCLE_BRANCH}" == "master" ]]; then
+                # latest tag on master for backward compatibility
+                # but not for main branch since we are moving away from the latest tag
                 TAG="latest"
               elif [[ "${CIRCLE_BRANCH}" =~ ^release\/[0-9]+\.[0-9]+$ ]]; then
                 # latest-<major>.<minor> on release/<major>.<minor> branches
