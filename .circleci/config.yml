@@ -10,6 +10,7 @@ commands:
       - run:
           name: Skip CircleCI CLI update check
           command: |
+            echo "wtf----> Test"
             mkdir -p ~/.circleci
             echo "last_update_check: $(date -Ins | sed 's/,/./')" > ~/.circleci/update_check.yml
 
